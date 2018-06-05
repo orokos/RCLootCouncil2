@@ -369,3 +369,17 @@ function FindInTableIf(tbl, pred)
 
 	return nil;
 end
+
+function Ambiguate(name, method)
+	if method == "short" then
+		name = gsub(name, "%-.+", "")
+	end
+	return name
+end
+
+function string:split(sep)
+   local sep, fields = sep or ":", {}
+   local pattern = string.format("([^%s]+)", sep)
+   self:gsub(pattern, function(c) fields[#fields+1] = c end)
+   return fields
+end
