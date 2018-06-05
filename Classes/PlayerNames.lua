@@ -56,6 +56,9 @@ local function NewName(name, guid)
          __tostring = function(self)
             return self.name
          end,
+         __eq = function(a,b)
+            return a.guid == b.guid
+         end,
       }
    )
 end
