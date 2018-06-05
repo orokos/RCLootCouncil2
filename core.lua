@@ -36,6 +36,9 @@
 --@debug@
 --if LibDebug then LibDebug() end
 --@end-debug@
+
+-- GLOBALS: GetLootMethod, GetAddOnMetadata, UnitClass
+
 _G.RCLootCouncil = LibStub("AceAddon-3.0"):NewAddon("RCLootCouncil", "AceConsole-3.0", "AceEvent-3.0", "AceComm-3.0", "AceSerializer-3.0", "AceHook-3.0", "AceTimer-3.0");
 local LibDialog = LibStub("LibDialog-1.0")
 local L = LibStub("AceLocale-3.0"):GetLocale("RCLootCouncil")
@@ -55,6 +58,7 @@ local defaultModules = {
 	version =		"RCVersionCheck",
 	sessionframe =	"RCSessionFrame",
 	votingframe =	"RCVotingFrame",
+	tradeui =		"RCTradeUI",
 }
 local userModules = {
 	masterlooter = nil,
@@ -63,6 +67,7 @@ local userModules = {
 	version = nil,
 	sessionframe = nil,
 	votingframe = nil,
+	tradeui = nil,
 }
 
 local frames = {} -- Contains all frames created by RCLootCouncil:CreateFrame()
@@ -85,13 +90,13 @@ function RCLootCouncil:OnInitialize()
   	self.version = GetAddOnMetadata("RCLootCouncil", "Version")
 	self.nnp = false
 	self.debug = false
-	self.tVersion = "Beta-1" -- String or nil. Indicates test version, which alters stuff like version check. Is appended to 'version', i.e. "version-tVersion" (max 10 letters for stupid security)
+	self.tVersion = "Alpha-1" -- String or nil. Indicates test version, which alters stuff like version check. Is appended to 'version', i.e. "version-tVersion" (max 10 letters for stupid security)
 
 	self.playerClass = select(2, UnitClass("player"))
 	self.guildRank = L["Unguilded"]
 	self.isMasterLooter = false -- Are we the ML?
 	self.masterLooter = ""  -- Name of the ML
-	self.lootMethod = "personalloot"
+	self.lootMethod = GetLootMethod() or "personalloot"
 	self.handleLoot = false -- Does RC handle loot(Start session from loot window)?
 	self.isCouncil = false -- Are we in the Council?
 	self.enabled = true -- turn addon on/off
@@ -167,6 +172,7 @@ function RCLootCouncil:OnInitialize()
 
 			baggedItems = {}, -- Items that are stored in MLs inventory for award later.
 								-- i = { {link=link, winner=winner, addedTime=sec between UTC epoch to when the item is added to lootInBags, }, bop=Item is BOP?}
+			itemStorage = {}, -- See ItemStorage.lua
 
 			usage = { -- State of enabledness
 				ml = false,				-- Enable when ML
@@ -224,6 +230,9 @@ function RCLootCouncil:OnInitialize()
 				},
 				lootframe = { -- We want the Loot Frame to get a little lower
 					y = -200,
+				},
+				tradeui = {
+					x = -300,
 				},
 				default = {}, -- base line
 			},
@@ -411,6 +420,7 @@ function RCLootCouncil:OnInitialize()
 	-- reset verTestCandidates
 	self.db.global.verTestCandidates = {}
 	self.playersData = playersData -- Make it globally available
+	self:InitItemStorage()
 	-- Add logged in message in the log
 	self:DebugLog("Logged In")
 end
@@ -592,7 +602,7 @@ function RCLootCouncil:ChatCommand(msg)
 			 	links = self:SplitItemLinks(args) -- Split item links to allow user to enter links without space
 			end
 			for _,v in ipairs(links) do
-			self:GetActiveModule("masterlooter"):AddUserItem(v)
+			self:GetActiveModule("masterlooter"):AddUserItem(v, self.playerName)
 			end
 		else
 			self:Print(L["You cannot use this command without being the Master Looter"])
@@ -848,6 +858,24 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 				else -- a non-ML send a lootTable?!
 					self:Debug(tostring(sender).." is not ML, but sent lootTable!")
 				end
+
+			elseif command == "lt_add" and self:UnitIsUnit(sender, self.masterLooter) then
+				-- We can skip most of the normal lootTable checks since a session should running
+				local oldLenght = #lootTable
+				lootTable = unpack(data)
+				self:PrepareLootTable(lootTable)
+				self:DoAutoPasses(lootTable, oldLenght)
+				self:SendLootAck(lootTable, oldLenght)
+				-- NOTE: Somewhat of a hack, but has the desired effect. Could probably do with a dedicated function.
+				-- FIXME: This doesn't work if the candidate is already rolling for the original lootTable
+				for k,v in ipairs(lootTable) do
+					if k <= oldLenght then
+						v.autopass = true
+					end
+				end
+				self:CallModule("lootframe")
+				self:GetActiveModule("lootframe"):Start(lootTable)
+				-- VotingFrame handles this by itself.
 
 			elseif command == "candidates" and self:UnitIsUnit(sender, self.masterLooter) then
 				self.candidates = unpack(data)
@@ -1490,33 +1518,43 @@ end
 -- Included is: specID and average ilvl is sent once.
 -- Currently equipped gear and "diff" is sent for each session.
 -- Autopass response is sent if the session has been autopassed. No other response is sent.
-function RCLootCouncil:SendLootAck(table)
+-- @param skip Only sends lootAcks on sessions > skip or 0
+function RCLootCouncil:SendLootAck(table, skip)
 	local toSend = {gear1 = {}, gear2 = {}, diff = {}, response = {}}
+	local hasData = false
 	for k, v in ipairs(table) do
 		local session = v.session or k
-		local g1,g2 = self:GetGear(v.link, v.equipLoc, v.relic)
-		local diff = self:GetDiff(g1, g2, v.ilvl)
-		toSend.gear1[session] = self:GetItemStringFromLink(g1)
-		toSend.gear2[session] = self:GetItemStringFromLink(g2)
-		toSend.diff[session] = diff
-		toSend.response[session] = v.autopass
+		if session > (skip or 0) then
+			hasData = true
+			local g1,g2 = self:GetGear(v.link, v.equipLoc, v.relic)
+			local diff = self:GetDiff(g1, g2, v.ilvl)
+			toSend.gear1[session] = self:GetItemStringFromLink(g1)
+			toSend.gear2[session] = self:GetItemStringFromLink(g2)
+			toSend.diff[session] = diff
+			toSend.response[session] = v.autopass
+		end
 	end
-	self:SendCommand("group", "lootAck", self.playerName, playersData.specID, playersData.ilvl, toSend)
+	if hasData then
+		self:SendCommand("group", "lootAck", self.playerName, playersData.specID, playersData.ilvl, toSend)
+	end
 end
 
 -- Sets lootTable[session].autopass = true if an autopass occurs, and informs the user of the change
-function RCLootCouncil:DoAutoPasses(table)
+-- @param skip Will only auto pass sessions > skip or 0
+function RCLootCouncil:DoAutoPasses(table, skip)
 	for k,v in ipairs(table) do
 		local session = v.session or k
-		if db.autoPass and not v.noAutopass then
-			if (v.boe and db.autoPassBoE) or not v.boe then
-				if self:AutoPassCheck(v.link, v.equipLoc, v.typeID, v.subTypeID, v.classes, v.token, v.relic) then
-					self:Debug("Autopassed on: ", v.link)
-					if not db.silentAutoPass then self:Print(format(L["Autopassed on 'item'"], v.link)) end
-					v.autopass = true
+		if session > (skip or 0) then
+			if db.autoPass and not v.noAutopass then
+				if (v.boe and db.autoPassBoE) or not v.boe then
+					if self:AutoPassCheck(v.link, v.equipLoc, v.typeID, v.subTypeID, v.classes, v.token, v.relic) then
+						self:Debug("Autopassed on: ", v.link)
+						if not db.silentAutoPass then self:Print(format(L["Autopassed on 'item'"], v.link)) end
+						v.autopass = true
+					end
+				else
+					self:Debug("Didn't autopass on: "..v.link.." because it's BoE!")
 				end
-			else
-				self:Debug("Didn't autopass on: "..v.link.." because it's BoE!")
 			end
 		end
 	end
@@ -1928,32 +1966,44 @@ function RCLootCouncil:NewMLCheck()
 
 	-- We are ML and shouldn't ask the player for usage
 	if self.lootMethod == "master" and db.usage.ml then -- addon should auto start
-		self:StartHandleLoot()
+		self:StartHandleLoot("masterloot")
 	-- We're ML and must ask the player for usage
 	elseif self.lootMethod == "master" and db.usage.ask_ml then
+		return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
+	elseif self.lootMethod == "personalloot" and db.usage.pl then -- auto start PL
+		self:StartHandleLoot("personalloot")
+	elseif self.lootMethod == "personalloot" and db.usage.ask_pl then
 		return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
 	end
 end
 
-function RCLootCouncil:StartHandleLoot()
-	if not self.isMasterLooter or db.usage.never then return end -- Someone else has become ML or we don't want to handle loot
+--- Enables the addon to automatically handle looting
+-- @param method The loot method. Pre BfA this will be either "masterloot" or "personalloot".
+-- REVIEW: This should only handle Personal Loot in BFA.
+function RCLootCouncil:StartHandleLoot(method)
+	--if not self.isMasterLooter or db.usage.never then return end -- Someone else has become ML or we don't want to handle loot
 	local lootMethod = GetLootMethod()
-	if lootMethod ~= "master" and not self:CanSetML() then return end -- Cant handle loot if we cant use ML loot method.
+	if method == "masterloot" then
+		if lootMethod ~= "master" and not self:CanSetML() then return end -- Cant handle loot if we cant use ML loot method.
+		if lootMethod ~= "master" then
+			SetLootMethod("master", self.Ambiguate(self.playerName)) -- activate ML
+			self:Print(L[" you are now the Master Looter and RCLootCouncil is now handling looting."])
+		else
+			self:Print(L["Now handles looting"])
+		end
 
-	self:Debug("Start handle loot.")
-	self.handleLoot = true
-	if lootMethod ~= "master" then
-		SetLootMethod("master", self.Ambiguate(self.playerName)) -- activate ML
-		self:Print(L[" you are now the Master Looter and RCLootCouncil is now handling looting."])
-	else
+		if db.autoAward and GetLootThreshold() ~= 2 and GetLootThreshold() > db.autoAwardLowerThreshold  then
+			self:Print(L["Changing loot threshold to enable Auto Awarding"])
+			SetLootThreshold(db.autoAwardLowerThreshold >= 2 and db.autoAwardLowerThreshold or 2)
+		end
+	else -- Personal Loot
+		if lootMethod ~= "personalloot" then -- Set it
+			SetLootMethod("personalloot")
+		end
 		self:Print(L["Now handles looting"])
 	end
-
-	if db.autoAward and GetLootThreshold() ~= 2 and GetLootThreshold() > db.autoAwardLowerThreshold  then
-		self:Print(L["Changing loot threshold to enable Auto Awarding"])
-		SetLootThreshold(db.autoAwardLowerThreshold >= 2 and db.autoAwardLowerThreshold or 2)
-	end
-
+	self:Debug("Start handle loot.")
+	self.handleLoot = true
 	if #db.council == 0 then -- if there's no council
 		self:Print(L["You haven't set a council! You can edit your council by typing '/rc council'"])
 	end
@@ -1962,7 +2012,7 @@ end
 function RCLootCouncil:OnRaidEnter(arg)
 	-- NOTE: We shouldn't need to call GetML() as it's most likely called on "LOOT_METHOD_CHANGED"
 	-- There's no ML, and lootmethod ~= ML, but we are the group leader
-	if IsPartyLFG() then return end	-- We can't use in lfg/lfd so don't bother
+	if IsPartyLFG() or db.usage.never then return end	-- We can't use in lfg/lfd so don't bother
 	-- Check if we can use in party
 	if not IsInRaid() and db.onlyUseInRaids then return end
 	if self.lootMethod ~= "master" and self:CanSetML() then
@@ -1970,7 +2020,7 @@ function RCLootCouncil:OnRaidEnter(arg)
 		self.handleLoot = false -- Reset
 
 		if db.usage.leader then
-			self:StartHandleLoot()
+			self:StartHandleLoot("masterloot")
 		-- We must ask the player for usage
 		elseif db.usage.ask_leader then
 			return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
