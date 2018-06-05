@@ -294,3 +294,78 @@ function dump(...)
 	end
 	return "<"..table.concat(t, "> <")..">"
 end
+
+function tDeleteItem(tbl, item)
+	local index = 1;
+	while tbl[index] do
+		if ( item == tbl[index] ) then
+			tremove(tbl, index);
+		else
+			index = index + 1;
+		end
+	end
+end
+
+function tIndexOf(tbl, item)
+	for i, v in ipairs(tbl) do
+		if item == v then
+			return i;
+		end
+	end
+end
+
+function tContains(tbl, item)
+	return tIndexOf(tbl, item) ~= nil;
+end
+
+function tInvert(tbl)
+	local inverted = {};
+	for k, v in pairs(tbl) do
+		inverted[v] = k;
+	end
+	return inverted;
+end
+
+function tFilter(tbl, pred, isIndexTable)
+	local out = {};
+
+	if (isIndexTable) then
+		local currentIndex = 1;
+		for i, v in ipairs(tbl) do
+			if (pred(v)) then
+				out[currentIndex] = v;
+				currentIndex = currentIndex + 1;
+			end
+		end
+	else
+		for k, v in pairs(tbl) do
+			if (pred(v)) then
+				out[k] = v;
+			end
+		end
+	end
+
+	return out;
+end
+
+function CopyTable(settings)
+	local copy = {};
+	for k, v in pairs(settings) do
+		if ( type(v) == "table" ) then
+			copy[k] = CopyTable(v);
+		else
+			copy[k] = v;
+		end
+	end
+	return copy;
+end
+
+function FindInTableIf(tbl, pred)
+	for k, v in pairs(tbl) do
+		if (pred(v)) then
+			return k, v;
+		end
+	end
+
+	return nil;
+end
