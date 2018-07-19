@@ -428,7 +428,7 @@ end
 function RCLootCouncil:OnEnable()
 	-- Register the player's name
 	self.realmName = select(2, UnitFullName("player"))
-	self.playerName = self:UnitName("player")
+	self.playerName = self.Names:Get(self:UnitName("player"))
 	self:DebugLog(self.playerName, self.version, self.tVersion)
 
 	-- register events
@@ -742,7 +742,7 @@ function RCLootCouncil:SendCommand(target, command, ...)
 		elseif IsInGroup() then -- Party
 			self:SendCommMessage("RCLootCouncil", toSend, IsPartyLFG() and "INSTANCE_CHAT" or "PARTY")
 		else--if self.testMode then -- Alone (testing)
-			self:SendCommMessage("RCLootCouncil", toSend, "WHISPER", self.playerName)
+			self:SendCommMessage("RCLootCouncil", toSend, "WHISPER", self.playerName.Name)
 		end
 
 	elseif target == "guild" then
@@ -750,7 +750,7 @@ function RCLootCouncil:SendCommand(target, command, ...)
 
 	else
 		if self:UnitIsUnit(target,"player") then -- If target == "player"
-			self:SendCommMessage("RCLootCouncil", toSend, "WHISPER", self.playerName)
+			self:SendCommMessage("RCLootCouncil", toSend, "WHISPER", self.playerName.Name)
 		else
 			-- We cannot send "WHISPER" to a crossrealm player
 			if target:find("-") then
@@ -826,7 +826,7 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 					end
 
 					-- Check if council is received
-					if not FindInTableIf(self.council, function(v) return self:UnitIsUnit(self.masterLooter, v) end) then
+					if not self.council[self.masterLooter.guid] then
 						self:Debug("Received loot table without ML in the council", sender)
 						self:SendCommand(self.masterLooter, "council_request")
 						return self:ScheduleTimer("OnCommReceived", 5, prefix, serializedMsg, distri, sender)
@@ -880,7 +880,12 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 			elseif command == "candidates" and self:UnitIsUnit(sender, self.masterLooter) then
 				self.candidates = unpack(data)
 			elseif command == "council" and self:UnitIsUnit(sender, self.masterLooter) then -- only ML sends council
-				self.council = unpack(data)
+				wipe(self.council)
+				for guid in pairs(unpack(data)) do
+					-- GUID's sent from ML are compressed
+					Name = self.Names:Get(guid)
+					self.council[Name.guid] = true
+				end
 				self.isCouncil = self:IsCouncil(self.playerName)
 
 				-- prepare the voting frame for the right people
@@ -906,7 +911,7 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 				if distri == "GUILD" then
 					sender = "guild"
 				end
-				self:SendCommand(sender, "verTestReply", self.playerName, self.playerClass, self.guildRank, self.version, self.tVersion, self:GetInstalledModulesFormattedData())
+				self:SendCommand(sender, "verTestReply", self.playerName.Name, self.playerClass, self.guildRank, self.version, self.tVersion, self:GetInstalledModulesFormattedData())
 				if strfind(otherVersion, "%a+") then return self:Debug("Someone's tampering with version?", otherVersion) end
 				if self:VersionCompare(self.version,otherVersion) and not self.verCheckDisplayed and (not (tVersion or self.tVersion)) then
 					self:Print(format(L["version_outdated_msg"], self.version, otherVersion))
@@ -1036,7 +1041,7 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 			-- Most likely pre 2.0 command
 			local cmd = strsplit(" ", serializedMsg, 2)
 			if cmd and cmd == "verTest" then
-				self:SendCommand(sender, "verTestReply", self.playerName, self.playerClass, self.guildRank, self.version, self.tVersion)
+				self:SendCommand(sender, "verTestReply", self.playerName.Name, self.playerClass, self.guildRank, self.version, self.tVersion)
 				return
 			end
 			self:Debug("Error in deserializing comm:", command, data);
@@ -1399,7 +1404,7 @@ function RCLootCouncil:SendResponse(target, session, response, isTier, isRelic, 
 
 	self:SendCommand(target, "response",
 		session,
-		self.playerName,
+		self.playerName.Name,
 		{	gear1 = g1 and self:GetItemStringFromLink(g1) or nil,
 			gear2 = g2 and self:GetItemStringFromLink(g2) or nil,
 			ilvl = sendAvgIlvl and playersData.ilvl or nil,
@@ -1482,7 +1487,7 @@ function RCLootCouncil:Timer(type, ...)
 				self:SendCommand(self.masterLooter, "MLdb_request")
 			end
 			-- and if we haven't received a council, request it
-			if #self.council == 0 then
+			if if not next(self.council) then -- REVIEW Check if this works
 				self:SendCommand(self.masterLooter, "council_request")
 			end
 		end
@@ -1535,7 +1540,7 @@ function RCLootCouncil:SendLootAck(table, skip)
 		end
 	end
 	if hasData then
-		self:SendCommand("group", "lootAck", self.playerName, playersData.specID, playersData.ilvl, toSend)
+		self:SendCommand("group", "lootAck", self.playerName.Name, playersData.specID, playersData.ilvl, toSend)
 	end
 end
 
@@ -2073,11 +2078,11 @@ function RCLootCouncil:CanSetML()
 	return (IsInRaid() or (inInstance and instanceType == "raid")) and isLeader and not HasLFGRestrictions() and IsInGuildGroup();
 end
 
-function RCLootCouncil:IsCouncil(name)
-	local ret = tContains(self.council, self:UnitName(name))
-	if self:UnitIsUnit(name, self.playerName) and self.isMasterLooter
-	 or self.nnp or self:UnitIsUnit(name, self.masterLooter) then ret = true end -- ML and nnp is always council
-	self:DebugLog(tostring(ret).." =", "IsCouncil", name)
+function RCLootCouncil:IsCouncil(Name)
+	local ret = self.council[Name.guid]
+	if self:UnitIsUnit(Name, self.playerName) and self.isMasterLooter
+	 or self.nnp or self:UnitIsUnit(Name, self.masterLooter) then ret = true end -- ML and nnp is always council
+	self:DebugLog(tostring(ret).." =", "IsCouncil", Name)
 	return ret
 end
 

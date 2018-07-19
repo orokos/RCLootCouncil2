@@ -139,6 +139,14 @@ function RCLootCouncilML:GetLootTableForTransmit()
 	return copy
 end
 
+function RCLootCouncilML:GetCouncilForTransmit()
+	local ret = {}
+	for guid in pairs(self.council) do
+		ret[gsub(guid, "Player%-", "")] = true
+	end
+	return ret
+end
+
 --- Removes a session from the lootTable
 -- @param session The session (index) in lootTable to remove
 function RCLootCouncilML:RemoveItem(session)
@@ -160,6 +168,14 @@ end
 function RCLootCouncilML:RemoveCandidate(name)
 	addon:DebugLog("ML:RemoveCandidate", name)
 	self.candidates[name] = nil
+end
+
+function RCLootCouncilML:GetCouncilLenght()
+	local i = 0
+	while(next(self.council)) do
+		i = i + 1
+	end
+	return i
 end
 
 function RCLootCouncilML:UpdateGroup(ask)
@@ -198,21 +214,26 @@ function RCLootCouncilML:UpdateGroup(ask)
 		addon:SendCommand("group", "MLdb", addon.mldb)
 		addon:SendCommand("group", "candidates", self.candidates)
 
-		local oldCouncil = self.council
+		local oldCouncil, oldLenght = CopyTable(self.council), self:GetCouncilLenght()
 		self.council = self:GetCouncilInGroup()
 		local councilUpdated = false
-		if #self.council ~= #oldCouncil then
+		if self:GetCouncilLenght() ~= oldLenght then
 			councilUpdated = true
 		else
-			for i in ipairs(self.council) do
-				if self.council[i] ~= oldCouncil[i] then
+			for guid in pairs(self.council) do
+				if not oldCouncil[guid] then
 					councilUpdated = true
 					break
+				else
+					oldCouncil[guid] = nil
 				end
+			end
+			if next(oldCouncil) then -- There's still something left, meaning someone has left
+				councilUpdated = true
 			end
 		end
 		if councilUpdated then
-			addon:SendCommand("group", "council", self.council)
+			addon:SendCommand("group", "council", self:GetCouncilForTransmit())
 		end
 	end
 end
@@ -220,9 +241,9 @@ end
 function RCLootCouncilML:StartSession()
 	addon:Debug("ML:StartSession()")
 	-- Make sure we haven't started the session too fast
-	if not addon.candidates[addon.playerName] or #addon.council == 0 then
+	if not addon.candidates[addon.playerName.guid] or not next(addon.council) then
 		addon:Print(L["Please wait a few seconds until all data has been synchronized."])
-		return addon:Debug("Data wasn't ready", addon.candidates[addon.playerName], #addon.council)
+		return addon:Debug("Data wasn't ready", addon.candidates[addon.playerName.guid])
 	end
 
 
@@ -414,7 +435,7 @@ end
 function RCLootCouncilML:CouncilChanged()
 	-- The council was changed, so send out the council
 	self.council = self:GetCouncilInGroup()
-	addon:SendCommand("group", "council", self.council)
+	addon:SendCommand("group", "council", self:GetCouncilForTransmit()
 	-- Send candidates so new council members can register it
 	addon:SendCommand("group", "candidates", self.candidates)
 end
@@ -498,7 +519,7 @@ function RCLootCouncilML:NewML(newML)
 		addon:SendCommand("group", "playerInfoRequest")
 		self:UpdateMLdb() -- Will build and send mldb
 		self:UpdateGroup(true)
-		addon:SendCommand("group", "council", self.council)
+		addon:SendCommand("group", "council", self:GetCouncilForTransmit())
 		-- Set a timer to send out the incoming playerInfo changes
 		self:ScheduleTimer("Timer", 10, "GroupUpdate")
 		self:ClearOldItemsInBags()
@@ -521,7 +542,7 @@ function RCLootCouncilML:Timer(type, ...)
 		addon:SendCommand("group", "offline_timer")
 
 	elseif type == "GroupUpdate" then
-		addon:SendCommand("group", "council", self.council)
+		addon:SendCommand("group", "council", self:GetCouncilForTransmit())
 		addon:SendCommand("group", "candidates", self.candidates)
 	end
 end
@@ -541,15 +562,15 @@ function RCLootCouncilML:OnCommReceived(prefix, serializedMsg, distri, sender)
 				addon:SendCommand("group", "MLdb", addon.mldb)
 
 			elseif command == "council_request" then
-				addon:SendCommand("group", "council", self.council)
+				addon:SendCommand("group", "council", self:GetCouncilForTransmit())
 
 			elseif command == "candidates_request" then
 				addon:SendCommand("group", "candidates", self.candidates)
 
-			elseif command == "reconnect" and not addon:UnitIsUnit(sender, addon.playerName) then -- Don't receive our own reconnect
+			elseif command == "reconnect" and not addon:UnitIsUnit(sender, addon.playerName.name) then -- Don't receive our own reconnect
 				-- Someone asks for mldb, council and candidates
 				addon:SendCommand(sender, "MLdb", addon.mldb)
-				addon:SendCommand(sender, "council", self.council)
+				addon:SendCommand(sender, "council", self:GetCouncilForTransmit())
 
 			--[[NOTE: For some reason this can silently fail, but adding a 1 sec timer on the rest of the calls seems to fix it
 				v2.0.1: 	With huge candidates/lootTable we get AceComm lostdatawarning "First", presumeably due to the 4kb ChatThrottleLib limit.
@@ -574,7 +595,7 @@ function RCLootCouncilML:OnCommReceived(prefix, serializedMsg, distri, sender)
 					end
 				end
 				addon:Debug("Responded to reconnect from", sender)
-			elseif command == "lootTable" and addon:UnitIsUnit(sender, addon.playerName) then
+			elseif command == "lootTable" and addon:UnitIsUnit(sender, addon.playerName.name) then
 				-- Start a timer to set response as offline/not installed unless we receive an ack
 				self:ScheduleTimer("Timer", 11 + 0.5*#self.lootTable, "LootSend")
 
@@ -685,7 +706,7 @@ function RCLootCouncilML:LootOpened()
 			end
 		end
 		if #self.lootTable > 0 and not self.running then
-			if db.autoStart and addon.candidates[addon.playerName] and #addon.council > 0 then -- Auto start only if data is ready
+			if db.autoStart and addon.candidates[addon.playerName.guid] and next(addon.council) then -- Auto start only if data is ready
 				self:StartSession()
 			else
 				addon:CallModule("sessionframe")
@@ -994,7 +1015,7 @@ local function registerAndAnnounceBagged(session)
 	self.lootTable[session].bagged = Item
 	if self.running then -- Award later can be done when actually loot session hasn't been started yet.
 		self.lootTable[session].baggedInSession = true -- REVIEW This variable is never used?
-		addon:SendCommand("group", "bagged", session, addon.playerName)
+		addon:SendCommand("group", "bagged", session, addon.playerName.name)
 	end
 	return false
 end
@@ -1348,7 +1369,7 @@ end
 function RCLootCouncilML:Test(items)
 	-- check if we're added in self.group
 	-- (We might not be on solo test)
-	if not tContains(self.candidates, addon.playerName) then
+	if not self.candidates[addon.playerName.guid] then
 		self:AddCandidate(addon.playerName, addon.playerClass, addon:GetPlayerRole(), addon.guildRank)
 	end
 	-- We must send candidates now, since we can't wait the normal 10 secs
@@ -1376,13 +1397,13 @@ end
 -- @return table [i] = "council_man_name".
 function RCLootCouncilML:GetCouncilInGroup()
 	local council = {}
-	for _, name in ipairs(addon.db.profile.council) do
-		if self.candidates[name] then
-			tinsert(council, name)
+	for guid in pairs(addon.db.profile.council) do
+		if self.candidates[guid] then
+			council[guid] = true
 		end
 	end
-	if not tContains(council, addon.playerName) then -- Check if the ML (us) is included
-		tinsert(council, addon.playerName)
+	if not council[addon.playerName.guid] then -- Check if the ML (us) is included
+		council[addon.playerName.guid] = true
 	end
 	addon:DebugLog("GetCouncilInGroup", unpack(council))
 	return council
