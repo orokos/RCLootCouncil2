@@ -1446,7 +1446,7 @@ function RCLootCouncil:Timer(type, ...)
 				self:SendCommand(self.masterLooter, "MLdb_request")
 			end
 			-- and if we haven't received a council, request it
-			if if not next(self.council) then -- REVIEW Check if this works
+			if not next(self.council) then -- REVIEW Check if this works
 				self:SendCommand(self.masterLooter, "council_request")
 			end
 		end

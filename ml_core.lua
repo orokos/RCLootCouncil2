@@ -435,7 +435,7 @@ end
 function RCLootCouncilML:CouncilChanged()
 	-- The council was changed, so send out the council
 	self.council = self:GetCouncilInGroup()
-	addon:SendCommand("group", "council", self:GetCouncilForTransmit()
+	addon:SendCommand("group", "council", self:GetCouncilForTransmit())
 	-- Send candidates so new council members can register it
 	addon:SendCommand("group", "candidates", self.candidates)
 end
