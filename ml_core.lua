@@ -461,34 +461,6 @@ function RCLootCouncilML:BuildMLdb()
 			changedButtons[i] = {text = db.buttons[i].text}
 		end
 	end
-	local changedTierButtons
-	if db.tierButtonsEnabled then
-		changedResponses.tier,changedTierButtons = {}, {}
-		for k,v in pairs(db.responses.tier) do
-			if v.text ~= addon.defaults.profile.responses.tier[k].text or unpack(v.color) ~= unpack(addon.defaults.profile.responses.tier[k].color) then
-				changedResponses.tier[k] = v
-			end
-		end
-		for i = 1, db.tierNumButtons do
-			if db.tierButtons[i].text ~= addon.defaults.profile.tierButtons[i].text then
-				changedTierButtons[i] = {text = db.tierButtons[i].text}
-			end
-		end
-	end
-	local changedRelicButtons
-	if db.relicButtonsEnabled then
-		changedResponses.relic, changedRelicButtons = {},{}
-		for k,v in pairs(db.responses.relic) do
-			if v.text ~= addon.defaults.profile.responses.relic[k].text or unpack(v.color) ~= unpack(addon.defaults.profile.responses.relic[k].color) then
-				changedResponses.relic[k] = v
-			end
-		end
-		for i = 1, db.relicNumButtons do
-			if db.relicButtons[i].text ~= addon.defaults.profile.relicButtons[i].text then
-				changedRelicButtons[i] = {text = db.relicButtons[i].text}
-			end
-		end
-	end
 
 	local MLdb = {
 		selfVote			= db.selfVote or nil,
@@ -496,17 +468,11 @@ function RCLootCouncilML:BuildMLdb()
 		anonymousVoting= db.anonymousVoting or nil,
 		allowNotes		= db.allowNotes or nil,
 		numButtons		= db.numButtons,
-		tierNumButtons = db.tierNumButtons,
-		relicNumButtons= db.relicNumButtons,
 		hideVotes		= db.hideVotes or nil,
 		observe			= db.observe or nil,
 		buttons			= changedButtons,	-- REVIEW I'm not sure if it's feasible to nil out empty tables
-		tierButtons 	= changedTierButtons,
-		relicButtons 	= changedRelicButtons,
 		responses		= changedResponses,
 		timeout			= db.timeout,
-		tierButtonsEnabled = db.tierButtonsEnabled or nil,
-		relicButtonsEnabled = db.relicButtonsEnabled or nil,
 	}
 
 	addon:SendMessage("RCMLBuildMLdb", MLdb)

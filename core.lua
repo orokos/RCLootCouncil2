@@ -136,13 +136,6 @@ function RCLootCouncil:OnInitialize()
 		--[[1]]			  { color = {0,1,0,1},				sort = 1,		text = L["Mainspec/Need"],},
 		--[[2]]			  { color = {1,0.5,0,1},			sort = 2,		text = L["Offspec/Greed"],	},
 		--[[3]]			  { color = {0,0.7,0.7,1},			sort = 3,		text = L["Minor Upgrade"],},
-		tier = {
-			--[[1]]		  { color = {0.1,1,0.5,1},			sort = 1,		text = L["4th Tier Piece"],},
-			--[[2]]		  { color = {1,1,0.5,1},			sort = 2,		text = L["2nd Tier Piece"],},
-			--[[3]]		  { color = {1,0.5,1,1},			sort = 3,		text = L["Tier Piece that doesn't complete a set"],},
-			--[[4]]		  { color = {0.5,1,1,1},			sort = 4,		text = L["Upgrade to existing tier/random upgrade"],},
-		},
-		relic = {}, -- Created further down
 	}
 	self.chatCmdHelp = {
 		{cmd = "config",	desc = L["chat_commands_config"]},
@@ -273,12 +266,6 @@ function RCLootCouncil:OnInitialize()
 				['*'] = {
 					filters = { -- Default filtering is showed
 						['*'] = true,
-						tier = { -- New section in v2.4.0
-							['*'] = true,
-						},
-						relic = { -- v2.7
-							['*'] = true
-						},
 						ranks = {
 							['*'] = true
 						},
@@ -312,17 +299,6 @@ function RCLootCouncil:OnInitialize()
 				{	text = _G.GREED,				whisperKey = L["whisperKey_greed"],},	-- 2
 				{	text = L["Minor Upgrade"],		whisperKey = L["whisperKey_minor"],},	-- 3
 			},
-			tierButtonsEnabled = true,
-			tierNumButtons = 4,
-			tierButtons = {
-				{	text = L["4 Piece"],					whisperKey = "1, 4tier, 4piece"},		-- 1
-				{	text = L["2 Piece"],					whisperKey = "2, 2tier, 2piece"},		-- 2
-				{	text = L["Other piece"],			whisperKey = "3, other, tier, piece"}, -- 3
-				{	text = _G.UPGRADE,					whisperKey = "4, upgrade, up"},			-- 4
-			},
-			relicButtonsEnabled = false,
-			relicNumButtons = 2,
-			relicButtons = {}, -- Created below
 			numMoreInfoButtons = 1,
 			maxAwardReasons = 10,
 			numAwardReasons = 3,
@@ -361,26 +337,6 @@ function RCLootCouncil:OnInitialize()
 				text = L["Button"]..i,
 			})
 		end
-		if i > self.defaults.profile.tierNumButtons then
-			tinsert(self.defaults.profile.tierButtons, {
-				text = L["Button"].." "..i,
-				whisperKey = ""..i,
-			})
-			tinsert(self.defaults.profile.responses.tier, {
-				color = {0.7, 0.7,0.7,1},
-				sort = i,
-				text = L["Button"]..i,
-			})
-		end
-		tinsert(self.defaults.profile.relicButtons, {
-			text = L["Button"].." "..i,
-			whisperKey = ""..i,
-		})
-		tinsert(self.defaults.profile.responses.relic, {
-			color = {0.7, 0.7,0.7,1},
-			sort = i,
-			text = L["Button"]..i,
-		})
 	end
 	-- create the other AwardReasons
 	for i = #self.defaults.profile.awardReasons+1, self.defaults.profile.maxAwardReasons do
