@@ -1,3 +1,16 @@
+### v3.0.0
+---
+
+* **Responses**
+* Removed Relic and Tier token buttons and responses.
+
+
+
+###### Dev
+* Replaced `:GetResponseText`, `:GetResponseColor` and `:GetResponseSort` with `:GetResponse`.
+* Replaced `:GetButtonText` with `:GetButtons`.
+* Added `:GetNumButtons`.
+
 ### v2.8.0
 ---
 * **Personal Loot**
