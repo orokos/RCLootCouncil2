@@ -8,7 +8,7 @@ if LibDebug then LibDebug() end
 --@end-debug@
 
 local addon = LibStub("AceAddon-3.0"):GetAddon("RCLootCouncil")
-local TradeUI = addon:NewModule("RCTradeUI", "AceComm-3.0", "AceEvent-3.0")
+local TradeUI = addon:NewModule("RCTradeUI", "AceComm-3.0", "AceEvent-3.0", "AceTimer-3.0")
 addon.TradeUI = TradeUI -- Shorthand for easier access
 local ST = LibStub("ScrollingTable")
 local L = LibStub("AceLocale-3.0"):GetLocale("RCLootCouncil")
@@ -17,12 +17,16 @@ local _G = _G
 
 local ROW_HEIGHT = 30
 local db
+local time_remaining_timer, update_targets_timer
+local TIME_REMAINING_INTERVAL = 300 -- 5 min
+local TIME_REMAINING_WARNING = 1200 -- 20 min
+local UPDATE_TIME_INTERVAL = 1 -- 1 sec
 
 -- lua
-local select, GetItemInfoInstant, ipairs,  unpack, tinsert, wipe, tremove, format, table, GetTime
-    = select, GetItemInfoInstant, ipairs,  unpack, tinsert, wipe, tremove, format, table, GetTime
+local select, GetItemInfoInstant, pairs, ipairs,  unpack, tinsert, wipe, tremove, format, table, GetTime, CheckInteractDistance, InitiateTrade
+    = select, GetItemInfoInstant, pairs, ipairs,  unpack, tinsert, wipe, tremove, format, table, GetTime, CheckInteractDistance, InitiateTrade
 -- GLOBALS: GetContainerNumSlots, ClickTradeButton, PickupContainerItem, ClearCursor, GetContainerItemInfo, GetContainerItemLink, GetTradePlayerItemInfo,
--- GLOBALS: IsModifiedClick, HandleModifiedItemClick, GetTradePlayerItemLink
+-- GLOBALS: IsModifiedClick, HandleModifiedItemClick, GetTradePlayerItemLink, Ambiguate
 
 function TradeUI:OnInitialize()
    self.scrollCols = {
@@ -46,21 +50,29 @@ function TradeUI:OnEnable()
    self:RegisterEvent("TRADE_CLOSED", "OnEvent_TRADE_CLOSED")
    self:RegisterEvent("TRADE_ACCEPT_UPDATE", "OnEvent_TRADE_ACCEPT_UPDATE")
    self:RegisterEvent("UI_INFO_MESSAGE", "OnEvent_UI_INFO_MESSAGE")
+   self:CheckTimeRemaining()
+   time_remaining_timer = self:ScheduleRepeatingTimer("CheckTimeRemaining", TIME_REMAINING_INTERVAL)
 end
 
 function TradeUI:OnDisable() -- Shouldn't really happen
    addon:DebugLog("TradeUI disabled")
+   self:Hide()
+end
+
+-- By default, TradeUI hides when empty
+function TradeUI:Show(forceShow)
+   self.frame = self:GetFrame()
+   update_targets_timer = self:ScheduleRepeatingTimer("Update", UPDATE_TIME_INTERVAL)
+   self:Update(forceShow)
+end
+
+function TradeUI:Hide()
+   self:CancelTimer(update_targets_timer)
    self.frame:Hide()
 end
 
-function TradeUI:Show()
-   self.frame = self:GetFrame()
-   self:Update()
-   self.frame:Show()
-end
-
-function TradeUI:Update()
-   if not self.frame then return self:Show() end
+function TradeUI:Update(forceShow)
+   if not self.frame then return self:Show(forceShow) end
    for k, v in ipairs(addon.ItemStorage:GetAllItemsOfType("to_trade")) do
       self.frame.rows[k] = {
          link = v.link,
@@ -74,7 +86,7 @@ function TradeUI:Update()
       }
    end
    self.frame.st:SetData(self.frame.rows)
-   if #self.frame.rows == 0 then self.frame:Hide() end
+   if not forceShow and #self.frame.rows == 0 then self:Hide() else self.frame:Show() end
 end
 
 function TradeUI:OnCommReceived(prefix, serializedMsg, distri, sender)
@@ -85,8 +97,28 @@ function TradeUI:OnCommReceived(prefix, serializedMsg, distri, sender)
          local session, winner, trader = unpack(data)
          if addon:UnitIsUnit(trader, "player") then
             -- We should give our item to 'winner'
-            addon.ItemStorage:StoreItem(addon:GetLootTable()[session].link, "to_trade", {recipient = winner})
+            if not addon:UnitIsUnit(winner, "player") or (addon.testMode or addon.nnp) then -- Don't add ourself unless we're testing
+               addon.ItemStorage:StoreItem(addon:GetLootTable()[session].link, "to_trade", {recipient = winner})
+            end
             self:Show()
+         end
+      end
+   end
+end
+
+function TradeUI:CheckTimeRemaining()
+   -- This will handle all items in ItemStorage, not just to_trade.
+   -- It might as well since it's always runnning, although I might change that if need be.
+   local Items = addon.ItemStorage:GetAllItemsLessTimeRemaining(TIME_REMAINING_WARNING)
+   if #Items > 0 then
+      addon:Print(format(L["time_remaining_warning"], TIME_REMAINING_WARNING/60))
+      for i, Item in pairs(Items) do
+         addon:Print(i, Item)
+      end
+      for i, Item in pairs(Items) do
+         if Item.time_remaining <= 0 then
+            addon:DebugLog("TradeUI - removed", Item, "due to <= 0 time remaining")
+            addon.ItemStorage:RemoveItem(Item)
          end
       end
    end
@@ -201,7 +233,11 @@ function TradeUI:GetFrame()
    f.st.frame:SetPoint("TOPLEFT",f,"TOPLEFT",10,-20)
    f.st:RegisterEvents({
       ["OnClick"] = function(rowFrame, cellFrame, data, cols, row, realrow, column, table, button, ...)
-         -- TODO Check for open trade window
+         if CheckInteractDistance(Ambiguate(data[realrow].winner, "short"), 2) then -- 2 for trade distance
+            InitiateTrade("target")
+         else
+            addon:Debug("TradeUI row OnClick - unit not in trade distance")
+         end
 
          -- Return false to have the default OnClick handler take care of left clicks
          return false
@@ -213,7 +249,7 @@ function TradeUI:GetFrame()
    f.closeBtn = addon:CreateButton(_G.CLOSE, f.content)
    f.closeBtn:SetPoint("BOTTOMRIGHT", f.content, "BOTTOMRIGHT", -10, 10)
    f.closeBtn:SetScript("OnClick", function()
-      f:Hide()
+      self:Hide()
    end)
 
    return f

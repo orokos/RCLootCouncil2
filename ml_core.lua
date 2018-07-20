@@ -130,11 +130,14 @@ end
 function RCLootCouncilML:GetLootTableForTransmit()
 	local copy = CopyTable(self.lootTable)
 	for k, v in pairs(copy) do
-		v["equipLoc"] = select(4, GetItemInfoInstant(v.link))
-		v["typeID"] = nil
-		v["subTypeID"] = nil
-		v["bagged"] = nil -- Only ML needs this.
-		v.isSent = nil
+		if v.isSent then -- Don't retransmit already sent items
+			copy[k] = nil
+		else
+			v["equipLoc"] = select(4, GetItemInfoInstant(v.link))
+			v["typeID"] = nil
+			v["subTypeID"] = nil
+			v["bagged"] = nil -- Only ML needs this.
+		end
 	end
 	return copy
 end
@@ -767,7 +770,7 @@ function RCLootCouncilML:CanGiveLoot(slot, item, winner)
 		   return false, "ml_not_in_instance" -- ML leaves the instance during a RC session.
 		end
 
-		if select(4, UnitPosition(winner)) ~= select(4, UnitPosition("player")) then
+		if select(4, UnitPosition(Ambiguate(winner, "short"))) ~= select(4, UnitPosition("player")) then
 		  return false, "out_of_instance" -- Winner not in the same instance as ML
 		end
 

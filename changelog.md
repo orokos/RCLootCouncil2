@@ -11,15 +11,24 @@
 * Replaced `:GetButtonText` with `:GetButtons`.
 * Added `:GetNumButtons`.
 
-### v2.8.0
+
+
+### v2.8.1
+---
+###### Dev
+* Added two new comm messages for when RCLootCouncil handles loot. See top of core.lua.
+
+
+### v2.8.0 (patch 8.0)
 ---
 * **Personal Loot**
 * RCLootCouncil is now fully useable with Personal Loot (PL).
 * All features (except obviously automatic distribution) is available when using PL.
-* PL mode can be activated the same way ML mode is activated (popup in raid/group and/or through options).
+* PL mode is activated the same way ML used to be (popup in raid/group and/or through options).
 * When in PL mode, any tradeable items looted by any raider is automatically added to the session frame.
 * When items are awarded, players will need to trade the item to the winner, see below.
 * PL sessions still respects all loot/item settings such as autopass, filters etc.
+* *TODO: Missing a list of candidates that has looted a particular boss.*
 
 
 * **TradeUI**
@@ -39,12 +48,23 @@
 * This info is also available for use in announcements.
 
 
+* **Discord export**
+* The Loot History can now be exported in a Discord friendly format.
+
+
 ###### Dev
 * Removed `db.baggedItems`.
 * Added `RCLootCouncil.ItemStorage` for handling all items stored in bags. See file for documentation.
 * Added TradeUI for handling items that should be traded.
 * Added comm `lt_add` to relay lootTable additions.
 * Changed `award` comm to include `owner` as the last argument.
+* Removed Master Loot (loot method) related stuff.
+
+### v2.7.11
+---
+###### Bugfixes
+* *Fixed an issue with out of instance checks (#340).*
+* *Fixed an issue sometimes happening on login due to version checks (#341).*
 
 ### v2.7.10
 ---

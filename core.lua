@@ -5,7 +5,6 @@
 	Things marked with "todo"
 		- Emulate award stuff - i.e. log awards without awarding
 		- IDEA Change popups so they only hide on award/probably add the error message to it.
-		- TODO/IDEA Change chat_commands to seperate lines in order to have a table of printable cmds.
 
 	Backwards compability breaks:
 		- Remove equipLoc, subType, texture from lootTable. They can all be created with GetItemInfoInstant()
@@ -32,6 +31,11 @@
 	lootHistory:
 		RCHistory_ResponseEdit - fires when the user edits the response of a history entry. args: data (see LootHistory:BuildData())
 		RCHistory_NameEdit	-	fires when the user edits the receiver of a history entry. args: data.
+]]
+--[[ Notable AceComm-3.0 messages: (See RCLootCouncil:OnCommReceived() for receiving comms)
+	Comm prefix: "RCLootCouncil"
+		StartHandleLoot 			- Sent whenever RCLootCouncil starts handling loot.
+		StopHandleLoot				- Sent whenever RCLootCouncil stops handling loot.
 ]]
 --@debug@
 --if LibDebug then LibDebug() end
@@ -90,7 +94,7 @@ function RCLootCouncil:OnInitialize()
   	self.version = GetAddOnMetadata("RCLootCouncil", "Version")
 	self.nnp = false
 	self.debug = false
-	self.tVersion = "Alpha-1" -- String or nil. Indicates test version, which alters stuff like version check. Is appended to 'version', i.e. "version-tVersion" (max 10 letters for stupid security)
+	self.tVersion = nil -- String or nil. Indicates test version, which alters stuff like version check. Is appended to 'version', i.e. "version-tVersion" (max 10 letters for stupid security)
 
 	self.playerClass = select(2, UnitClass("player"))
 	self.guildRank = L["Unguilded"]
@@ -171,11 +175,13 @@ function RCLootCouncil:OnInitialize()
 			itemStorage = {}, -- See ItemStorage.lua
 
 			usage = { -- State of enabledness
-				ml = false,				-- Enable when ML
-				ask_ml = true,			-- Ask before enabling when ML
+				--ml = false,				-- Enable when ML
+				--ask_ml = true,			-- Ask before enabling when ML
 				leader = false,		-- Enable when leader
 				ask_leader = true,	-- Ask before enabling when leader
 				never = false,			-- Never enable
+				pl = false,				-- Always enable with PL
+				ask_pl = false,			-- Ask before enabling when PL
 				state = "ask_ml", 	-- Current state
 			},
 			onlyUseInRaids = true,
@@ -351,6 +357,7 @@ function RCLootCouncil:OnInitialize()
   	self:RegisterChatCommand("rclc", "ChatCommand")
 	self.customChatCmd = {} -- Modules that wants their cmds used with "/rc"
 	self:RegisterComm("RCLootCouncil")
+	self:RegisterComm("RCLCv")
 	self.db = LibStub("AceDB-3.0"):New("RCLootCouncilDB", self.defaults, true)
 	self.lootDB = LibStub("AceDB-3.0"):New("RCLootCouncilLootDB")
 	--[[ Format:
@@ -404,6 +411,7 @@ function RCLootCouncil:OnEnable()
 	self:RegisterEvent("LOOT_OPENED",		"OnEvent")
 	self:RegisterEvent("LOOT_SLOT_CLEARED", "OnEvent")
 	self:RegisterEvent("LOOT_CLOSED",		"OnEvent")
+	self:RegisterEvent("ENCOUNTER_LOOT_RECEIVED", "OnEvent") -- REVIEW Check if boss loot is obtainable through this
 
 	--self:RegisterEvent("GROUP_ROSTER_UPDATE", "Debug", "event")
 
@@ -629,6 +637,9 @@ function RCLootCouncil:ChatCommand(msg)
 		self:UpdateLootHistory()
 	elseif input == "sync" then
 		self.Sync:Spawn()
+
+	elseif input == "trade" then
+		self.TradeUI:Show(true)
 --@debug@
 	elseif input == 't' then -- Tester cmd
 		-- Test items with several modifiers. Should probably be added to the regular test func
@@ -733,6 +744,7 @@ function RCLootCouncil:SendCommand(target, command, ...)
 	end
 end
 
+local v3VersionWarningCount = 0
 --- Receives RCLootCouncil commands.
 -- Params are delivered by AceComm-3.0, but we need to extract our data created with the
 -- RCLootCouncil:SendCommand function.
@@ -821,19 +833,18 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 			elseif command == "lt_add" and self:UnitIsUnit(sender, self.masterLooter) then
 				-- We can skip most of the normal lootTable checks since a session should running
 				local oldLenght = #lootTable
-				lootTable = unpack(data)
+				for k,v in pairs(unpack(data)) do
+					lootTable[k] = v
+				end
+				-- REVIEW This runs over the entire lootTable again, but will probably need changing anyway in v3.0
 				self:PrepareLootTable(lootTable)
 				self:DoAutoPasses(lootTable, oldLenght)
 				self:SendLootAck(lootTable, oldLenght)
-				-- NOTE: Somewhat of a hack, but has the desired effect. Could probably do with a dedicated function.
-				-- FIXME: This doesn't work if the candidate is already rolling for the original lootTable
 				for k,v in ipairs(lootTable) do
-					if k <= oldLenght then
-						v.autopass = true
+					if k > oldLenght then
+						self:GetActiveModule("lootframe"):AddSingleItem(v)
 					end
 				end
-				self:CallModule("lootframe")
-				self:GetActiveModule("lootframe"):Start(lootTable)
 				-- VotingFrame handles this by itself.
 
 			elseif command == "candidates" and self:UnitIsUnit(sender, self.masterLooter) then
@@ -884,6 +895,9 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 
 			elseif command == "verTestReply" then
 				local name,_,_, otherVersion, tVersion, moduleData = unpack(data)
+				if not name then -- REVIEW v2.7.11 For some reason name can sometimes be missing (#341)!?
+					return self:DebugLog("Error - verTestReply with nil name", sender, name, otherVersion, tVersion, moduleData)
+				end
 				self.db.global.verTestCandidates[name] = otherVersion.. "-" .. tostring(tVersion) .. ": - " .. self.playerName
 				if strfind(otherVersion, "%a+") then return self:Debug("Someone's tampering with version?", otherVersion) end
 				if self:VersionCompare(self.version,otherVersion) and not self.verCheckDisplayed and (not (tVersion or self.tVersion)) then
@@ -1004,6 +1018,12 @@ function RCLootCouncil:OnCommReceived(prefix, serializedMsg, distri, sender)
 				return
 			end
 			self:Debug("Error in deserializing comm:", command, data);
+		end
+
+	elseif prefix == "RCLCv" then
+		-- v3.0 has been released!
+		if v3VersionWarningCount <= 5 then
+			self:Print("RCLootCouncil v3.0 has been released. This version is no longer compatible, please upgrade!")
 		end
 	end
 end
@@ -1154,7 +1174,7 @@ function RCLootCouncil:Test(num, fullTest, trinketTest)
 	self.isMasterLooter, self.masterLooter = self:GetML()
 	-- We must be in a group and not the ML
 	if not self.isMasterLooter then
-		self:Print(L["You cannot initiate a test while in a group without being the MasterLooter."])
+		self:Print(L.error_test_as_non_leader)
 		self.testMode = false
 		return
 	end
@@ -1465,6 +1485,7 @@ function RCLootCouncil:PrepareLootTable(lootTable)
 		v.texture = texture
 		v.typeID = typeID
 		v.subTypeID = subTypeID
+		v.session = ses
 		if not v.classes then -- We didn't receive "classes", because ML is using an old version. Generate it from token data.
 			if RCTokenClasses and RCTokenClasses[self:GetItemIDFromLink(v.link)] then
 				v.classes = 0
@@ -1830,6 +1851,8 @@ function RCLootCouncil:OnEvent(event, ...)
 
 	elseif event == "LOOT_OPENED" then
 		self:Debug("Event:", event, ...)
+		self:Debug("GetUnitName:", GetUnitName("target"))
+		self:Debug("GetUnitGUID:", GetUnitGUID("target"))
 		if select(1, ...) ~= "scheduled" and self.LootOpenScheduled then return end -- When this function is scheduled to run again, but LOOT_OPENDED event fires, return.
 		self.LootOpenScheduled = false
 		wipe(self.lootSlotInfo)
@@ -1847,6 +1870,7 @@ function RCLootCouncil:OnEvent(event, ...)
 						quantity = quantity,
 						quality = quality,
 						locked = locked,
+						guid = (GetLootSourceInfo(i)), -- Boss GUID
 					}
 				else -- It's possible that item in the loot window is uncached. Retry in the next frame.
 					self:Debug("Loot uncached when the loot window is opened. Retry in the next frame.", link)
@@ -1879,6 +1903,9 @@ function RCLootCouncil:OnEvent(event, ...)
 				self:GetActiveModule("masterlooter"):OnLootSlotCleared(slot, link)
 			end
 		end
+
+	else
+		self:Debug("NonHandled Event:", event, ...)
 	end
 end
 
@@ -1894,8 +1921,7 @@ function RCLootCouncil:NewMLCheck()
 	end
 
 	if not self.isMasterLooter then -- we're not ML, so make sure it's disabled
-		self:GetActiveModule("masterlooter"):Disable()
-		self.handleLoot = false -- Reset
+		self:StopHandleLoot()
 	end
 	if IsPartyLFG() then return end	-- We can't use in lfg/lfd so don't bother
 	if not self.masterLooter then return end -- Didn't find a leader or ML.
@@ -1928,67 +1954,46 @@ function RCLootCouncil:NewMLCheck()
 	local _, type = IsInInstance()
 	if type == "arena" or type == "pvp" then return end
 
-	-- We are ML and shouldn't ask the player for usage
-	if self.lootMethod == "master" and db.usage.ml then -- addon should auto start
-		self:StartHandleLoot("masterloot")
-	-- We're ML and must ask the player for usage
-	elseif self.lootMethod == "master" and db.usage.ask_ml then
-		return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
-	elseif self.lootMethod == "personalloot" and db.usage.pl then -- auto start PL
-		self:StartHandleLoot("personalloot")
+	if self.lootMethod == "personalloot" and db.usage.pl then -- auto start PL
+		self:StartHandleLoot()
 	elseif self.lootMethod == "personalloot" and db.usage.ask_pl then
 		return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
 	end
 end
 
 --- Enables the addon to automatically handle looting
--- @param method The loot method. Pre BfA this will be either "masterloot" or "personalloot".
--- REVIEW: This should only handle Personal Loot in BFA.
-function RCLootCouncil:StartHandleLoot(method)
-	--if not self.isMasterLooter or db.usage.never then return end -- Someone else has become ML or we don't want to handle loot
+function RCLootCouncil:StartHandleLoot()
 	local lootMethod = GetLootMethod()
-	if method == "masterloot" then
-		if lootMethod ~= "master" and not self:CanSetML() then return end -- Cant handle loot if we cant use ML loot method.
-		if lootMethod ~= "master" then
-			SetLootMethod("master", self.Ambiguate(self.playerName)) -- activate ML
-			self:Print(L[" you are now the Master Looter and RCLootCouncil is now handling looting."])
-		else
-			self:Print(L["Now handles looting"])
-		end
-
-		if db.autoAward and GetLootThreshold() ~= 2 and GetLootThreshold() > db.autoAwardLowerThreshold  then
-			self:Print(L["Changing loot threshold to enable Auto Awarding"])
-			SetLootThreshold(db.autoAwardLowerThreshold >= 2 and db.autoAwardLowerThreshold or 2)
-		end
-	else -- Personal Loot
-		if lootMethod ~= "personalloot" then -- Set it
-			SetLootMethod("personalloot")
-		end
-		self:Print(L["Now handles looting"])
+	if lootMethod ~= "personalloot" then -- Set it
+		SetLootMethod("personalloot")
 	end
+	self:Print(L["Now handles looting"])
 	self:Debug("Start handle loot.")
 	self.handleLoot = true
+	self:SendCommand("group", "StartHandleLoot")
 	if #db.council == 0 then -- if there's no council
 		self:Print(L["You haven't set a council! You can edit your council by typing '/rc council'"])
 	end
 end
 
+--- Disables loot handling
+function RCLootCouncil:StopHandleLoot()
+	self:Debug("Stop handling loot")
+	self.handleLoot = false
+	self:GetActiveModule("masterlooter"):Disable()
+	self:SendCommand("group", "StopHandleLoot")
+end
+
 function RCLootCouncil:OnRaidEnter(arg)
 	-- NOTE: We shouldn't need to call GetML() as it's most likely called on "LOOT_METHOD_CHANGED"
-	-- There's no ML, and lootmethod ~= ML, but we are the group leader
 	if IsPartyLFG() or db.usage.never then return end	-- We can't use in lfg/lfd so don't bother
 	-- Check if we can use in party
 	if not IsInRaid() and db.onlyUseInRaids then return end
-	if self.lootMethod ~= "master" and self:CanSetML() then
-		-- We don't need to ask the player for usage, so change loot method to master, and make the player ML
-		self.handleLoot = false -- Reset
-
-		if db.usage.leader then
-			self:StartHandleLoot("masterloot")
-		-- We must ask the player for usage
-		elseif db.usage.ask_leader then
-			return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
-		end
+	if db.usage.leader then
+		self:StartHandleLoot()
+	-- We must ask the player for usage
+	elseif db.usage.ask_leader then
+		return LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_USAGE")
 	end
 end
 
@@ -2000,48 +2005,28 @@ function RCLootCouncil:GetML()
 	if GetNumGroupMembers() == 0 and (self.testMode or self.nnp) then -- always the player when testing alone
 		return true, self.playerName
 	end
-	local lootMethod, mlPartyID, mlRaidID = GetLootMethod()
-	self:Debug("LootMethod = ", lootMethod)
-	local name;
-	if lootMethod == "master" then
-		if mlRaidID then 				-- Someone in raid
-			name = self:UnitName("raid"..mlRaidID)
-		elseif mlPartyID == 0 then -- Player in party
-			name = self.playerName
-		elseif mlPartyID then		-- Someone in party
-			name = self:UnitName("party"..mlPartyID)
+	-- Set the Group leader as the ML
+	local name
+	for i=1, GetNumGroupMembers() or 0 do
+		local name2, rank = GetRaidRosterInfo(i)
+		if not name2 then -- Group info is not completely ready
+			return false, "Unknown"
 		end
-		return IsMasterLooter(), name
-	else -- Set the Group leader as the ML if the loot method is not master loot
-		for i=1, GetNumGroupMembers() or 0 do
-			local name2, rank = GetRaidRosterInfo(i)
-			if not name2 then -- Group info is not completely ready
-				return false, "Unknown"
-			end
-			if rank == 2 then -- Group leader. Btw, name2 can be nil when rank is 2.
-				name = self:UnitName(name2)
-			end
+		if rank == 2 then -- Group leader. Btw, name2 can be nil when rank is 2.
+			name = self:UnitName(name2)
 		end
-		if name then
-			return UnitIsGroupLeader("player"), name
-		end
+	end
+	if name then
+		return UnitIsGroupLeader("player"), name
 	end
 	return false, nil;
 end
 
--- Whether or not the player can set master looter
-function RCLootCouncil:CanSetML()
-	-- Code is from FrameXML/UnitPopup.lua
-	local inInstance, instanceType = IsInInstance();
-	local isLeader = UnitIsGroupLeader("player")
-	return (IsInRaid() or (inInstance and instanceType == "raid")) and isLeader and not HasLFGRestrictions() and IsInGuildGroup();
-end
-
-function RCLootCouncil:IsCouncil(Name)
-	local ret = self.council[Name.guid]
-	if self:UnitIsUnit(Name, self.playerName) and self.isMasterLooter
-	 or self.nnp or self:UnitIsUnit(Name, self.masterLooter) then ret = true end -- ML and nnp is always council
-	self:DebugLog(tostring(ret).." =", "IsCouncil", Name)
+function RCLootCouncil:IsCouncil(name)
+	local ret = tContains(self.council, self:UnitName(name))
+	if self:UnitIsUnit(name, self.playerName) and self.isMasterLooter
+	 or self.nnp or self:UnitIsUnit(name, self.masterLooter) then ret = true end -- ML and nnp is always council
+	self:DebugLog(tostring(ret).." =", "IsCouncil", name)
 	return ret
 end
 
