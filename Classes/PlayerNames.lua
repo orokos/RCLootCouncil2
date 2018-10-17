@@ -45,7 +45,7 @@ local name_proto = {
 
 
 local function NewName(name, guid)
-   print("Creating Name:", name, guid)
+   addon:Debug("Creating Name:", name, guid)
    return setmetatable(
       {
          name = name or "",
