@@ -383,3 +383,21 @@ function string:split(sep)
    self:gsub(pattern, function(c) fields[#fields+1] = c end)
    return fields
 end
+
+-- Not part of the WoWAPI, but added to emulate the ingame /dump cmd
+printtable = function( data, level )
+	if not data then return end
+	level = level or 0
+	local ident=strrep('     ', level)
+	if level>6 then return end
+	if type(data)~='table' then print(tostring(data)) end;
+	for index,value in pairs(data) do repeat
+		if type(value)~='table' then
+			print( ident .. '['..tostring(index)..'] = ' .. tostring(value) .. ' (' .. type(value) .. ')' );
+			break;
+		end
+		print( ident .. '['..tostring(index)..'] = {')
+        printtable(value, level+1)
+        print( ident .. '}' );
+	until true end
+end
