@@ -8,6 +8,7 @@ dofile "../../Libs/AceAddon-3.0/AceAddon-3.0.lua"
 gsub = string.gsub
 strfind = string.find
 strsplit = string.split
+strsub = string.sub
 --dofile "../__load_libs.lua"
 
 -- dofile "../../core.lua"
@@ -156,6 +157,12 @@ TestPlayerNames = {
       lu.assertEquals(Name.guid, "Player-123-45678900")
       lu.assertEquals(Name.name, 'SomeNewDude-Server')
    end,
+
+   -- testGetRealm = function (self) -- Fails due to strsplit implementation doesn't match Blizzards
+   --    print(self.Name, self.Name.guid, self.Name.realm)
+   --    lu.assertEquals(self.Name:GetRealm(), "Daggerspine")
+   --    lu.assertEquals(self.Name3:GetRealm(), "Ravencrest")
+   -- end,
 }
 
 

@@ -11,6 +11,7 @@ addon.Names = Names
 local name_proto = {
    name = "",
    guid = "",
+   realm = "",
 
    ["GetName"] = function(self)
       return self.name
@@ -18,6 +19,10 @@ local name_proto = {
 
    ["GetShortName"] = function(self)
       return Ambiguate(self.name, "short")
+   end,
+
+   ["GetRealm"] = function(self)
+      return self.realm
    end,
 
    ["GetGUID"] = function(self)
@@ -46,7 +51,7 @@ local name_proto = {
 
 local function NewName(name, guid)
    addon:Debug("Creating Name:", name, guid)
-   return setmetatable(
+   local Name = setmetatable(
       {
          name = name or "",
         guid = guid or ""
@@ -61,6 +66,8 @@ local function NewName(name, guid)
          end,
       }
    )
+   Name.realm = select(2, strsplit("-", name, 2))
+   return Name
 end
 
 --- Returns Name object, and stores said name in SV.
