@@ -144,7 +144,7 @@ function Storage:RemoveAllItemsOfType(type)
       if StoredItems[i].type == type then
          -- REVIEW Are we really guaranteed to have the same index in both tables?
          tremove(StoredItems, i)
-         tremove(db.itemStorage,i)
+         tremove(db.itemStorage, i)
       end
    end
 end
