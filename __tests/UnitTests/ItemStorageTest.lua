@@ -28,8 +28,8 @@ local db = {
 
 -- Init some globals used
 NUM_BAG_SLOTS = 4
-GetContainerNumSlots = function ()
-   return 30
+GetContainerNumSlots = function (c)
+   return c == 0 and 0 or 30
 end
 GetContainerItemLink = function (c,s)
    return private.items[s]
@@ -60,6 +60,17 @@ dofile "../../Classes/ItemStorage.lua" -- Load the rc.ItemStorage namespace
 -- Tests
 -------------------------------------------
 TestBasicFunctions = {
+   Setup = function()
+      dofile "../../Classes/ItemStorage.lua"
+      db.itemStorage = {
+      {
+         link = "|cffa335ee|Hitem:160623::::::::120:577::5:3:4823:1492:4786:::|h[Hood of Pestilent Ichor]|h|r", -- private.items[1]
+         type = "to_trade",
+         time_added = 1234,
+      }
+   }
+      rc:InitItemStorage()
+   end,
    TestStorage = function ()
       local Item = rc.ItemStorage:StoreItem(private.items[1], "to_trade", nil)
       lu.assertIsTable(Item)
@@ -77,6 +88,53 @@ TestBasicFunctions = {
    TestWrongType = function ()
       lu.assertError(rc.ItemStorage.StoreItem, rc.ItemStorage, private.items[1], "wrongType",nil)
    end,
+   TestGetItem = function (args)
+      lu.assertEquals(rc.ItemStorage:GetItem(private.items[1]).link, private.items[1])
+      lu.assertNil(rc.ItemStorage:GetItem("nonexistant"))
+   end,
+   TestGetAllItems = function ()
+      lu.assertEquals(#rc.ItemStorage:GetAllItems(), 1)
+      local Item = rc.ItemStorage:StoreItem(private.items[4], "other", nil)
+      local all = rc.ItemStorage:GetAllItems()
+      lu.assertEquals(#all, 2)
+      lu.assertEquals(all[2], Item)
+   end,
+   TestGetAllItemsLessTimeRemaining = function (args)
+      lu.assertEquals(#rc.ItemStorage:GetAllItemsLessTimeRemaining(), 0)
+      lu.assertEquals(#rc.ItemStorage:GetAllItemsLessTimeRemaining(1000), 1)
+      local Item = rc.ItemStorage:StoreItem(private.items[5], nil,nil)
+      lu.assertEquals(#rc.ItemStorage:GetAllItemsLessTimeRemaining(5000), 2)
+      lu.assertEquals(rc.ItemStorage:GetAllItemsLessTimeRemaining(5000)[2], Item)
+   end,
+   TestGetAllItemsMultiPred = function (args)
+      lu.assertEquals(rc.ItemStorage:GetAllItemsMultiPred(
+         function(item)
+            return item.type == "to_trade"
+         end)[1].link,
+         private.items[1]
+      )
+      local Item = rc.ItemStorage:StoreItem(private.items[5], "other",nil)
+      lu.assertEquals(rc.ItemStorage:GetAllItemsMultiPred(
+         function(item)
+            return item.type == "other"
+         end)[1],
+         Item
+      )
+      lu.assertEquals(#rc.ItemStorage:GetAllItemsMultiPred(
+         function(item)
+            return item.type == "to_trade" or item.type == "other"
+         end,
+         function(item)
+            return item.time_added == 0
+         end),
+         2
+      )
+   end,
+   TestGetItemContainerSlot = function (args)
+      lu.assertEquals({rc.ItemStorage:GetItemContainerSlot(private.items[1])}, {1,1})
+      rc.ItemStorage:StoreItem(private.items[4], nil,nil)
+      lu.assertEquals({rc.ItemStorage:GetItemContainerSlot(private.items[4])}, {1,4})
+   end
 }
 
 TestPersistantStorage = {
@@ -122,9 +180,7 @@ TestPersistantStorage = {
       lu.assertEquals(#db.itemStorage, 3)
       rc.ItemStorage:RemoveAllItemsOfType("to_trade")
       lu.assertEquals(#db.itemStorage, 1)
-      printtable(db)
       lu.assertEquals(db.itemStorage[1], Item)
-
    end,
 }
 
