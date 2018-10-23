@@ -158,6 +158,26 @@ function GetNumAddOns()
 	return 0
 end
 
+function IsPartyLFG ()
+	return _G.IsPartyLFGVal
+end
+
+function IsInRaid()
+	return _G.IsInRaidVal
+end
+
+function UnitInRaid()
+	return _G.IsInRaidVal
+end
+
+function UnitInParty()
+	return _G.IsInGroupVal
+end
+
+function IsInGroup ()
+	return _G.IsInGroupVal
+end
+
 function getglobal(k)
 	return _G[k]
 end
@@ -383,6 +403,19 @@ function string:split(sep)
    self:gsub(pattern, function(c) fields[#fields+1] = c end)
    return fields
 end
+
+function UnitGUID (name)
+   return "Player-FFF-ABCDF012"
+end
+
+-- Enable some globals
+_G.gsub = string.gsub
+_G.strfind = string.find
+_G.strsplit = string.split
+_G.strsub = string.sub
+_G.tremove = table.remove
+_G.strrep = string.rep
+_G.tinsert = table.insert
 
 -- Not part of the WoWAPI, but added to emulate the ingame /dump cmd
 printtable = function( data, level )

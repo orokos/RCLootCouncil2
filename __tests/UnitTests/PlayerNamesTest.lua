@@ -4,11 +4,7 @@ dofile "../wow_api.lua"
 dofile "../../Libs/LibStub/LibStub.lua"
 dofile "../../Libs/AceAddon-3.0/AceAddon-3.0.lua"
 
--- Enable some globals
-gsub = string.gsub
-strfind = string.find
-strsplit = string.split
-strsub = string.sub
+
 --dofile "../__load_libs.lua"
 
 -- dofile "../../core.lua"

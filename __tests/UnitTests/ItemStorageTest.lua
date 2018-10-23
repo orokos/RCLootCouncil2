@@ -4,14 +4,6 @@ dofile "../wow_api.lua"
 dofile "../../Libs/LibStub/LibStub.lua"
 dofile "../../Libs/AceAddon-3.0/AceAddon-3.0.lua"
 
--- Enable some globals
-gsub = string.gsub
-strfind = string.find
-strsplit = string.split
-tinsert = table.insert
-tremove = table.remove
-strrep = string.rep
-
 local rc = LibStub("AceAddon-3.0"):NewAddon("RCLootCouncil")
 local private = {}
 local debug = false
