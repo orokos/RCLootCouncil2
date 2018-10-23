@@ -3,8 +3,8 @@
 -- @author Potdisc
 -- Create Date : 18/10/2018 13:20:31
 
--- GLOBALS: error, IsPartyLFG, IsInRaid, IsInGroup, tinsert
-local tostring, ipairs, pairs, tremove, format, type = tostring, ipairs, pairs, tremove, format, type
+-- GLOBALS: error, IsPartyLFG, IsInRaid, IsInGroup, assert
+local tostring, ipairs, pairs, tremove, format, type, tinsert = tostring, ipairs, pairs, tremove, format, type, tinsert
 
 local addon = LibStub("AceAddon-3.0"):GetAddon("RCLootCouncil")
 local ld = LibStub("LibDeflate")
@@ -16,6 +16,8 @@ addon.Comms.Prefixes = {
    MAIN     = "RCLC",
    VERSION  = "RCLCv",
 }
+
+LibStub("AceComm-3.0"):Embed(private)
 
 private.commands = {}
 -- [prefix][command] = {mod, func} stuff to execute end
@@ -36,49 +38,56 @@ function Comms:RegisterCommand (mod, prefix, command, func, order)
    prefix = prefix or self.Prefixes.MAIN
    if not private.commands[prefix] then private.commands[prefix] = {} end
    if not private.commands[prefix][command] then
-      private.commands[prefix][command] = {func = func, mod = mod}
-   elseif order and type(order) == "number" then
+      private.commands[prefix][command] = {}
+   end
+   if order and type(order) == "number" then
       tinsert(private.commands[prefix][command], order, {func = func, mod = mod})
    else
-      private.commands[prefix][command][#private.commands[prefix][command]] = {func = func, mod = mod}
+      private.commands[prefix][command][#private.commands[prefix][command] + 1] = {func = func, mod = mod}
    end
 end
 
 function Comms:BulkRegisterCommand (mod, prefix, data)
    if type(mod) ~= "table" then return error("Error - wrong mod supplied.") end
-   prefix = prefix or self.Prefixes.MAIN
-   if not private.commands[prefix] then private.commands[prefix] = {} end
+   if type(data) ~= "table" then return error("Error - wrong data supplied.") end
    for command, func in pairs(data) do
-      if not private.commands[prefix][command] then
-            private.commands[prefix][command] = {func = func, mod = mod}
-      else
-         private.commands[prefix][command][#private.commands[prefix][command]] = {func = func, mod = mod}
-      end
+      self:RegisterCommand(mod, prefix, command, func)
    end
 end
 
-function private:SendComm(prefix, channel, target, command, ...)
+function Comms:Register(mod, prefix)
+   private:RegisterComm(prefix, "ReceiveComm")
+   -- TODO Add to self.Prefixes?
+   return function(mod, target, command, ...)
+      private:SendComm(prefix, target, "NORMAL", nil, nil, command, ...)
+   end
+end
+
+function Comms:Send (args)
+   assert(args.data)
+   assert(args.command)
+   assert(args.target)
+   private:SendComm(args.prefix or self.Prefixes.MAIN, args.target, args.prio, args.callback, args.callbackarg, args.command, args.data)
+end
+
+function private:SendComm(prefix, target, prio, callback, callbackarg, command, ...)
    local serialized = addon:Serialize(command, {...})
-   local compressed = ld:CompressDelfate(serialized, self.compresslevel)
+   local compressed = ld:CompressDeflate(serialized, self.compresslevel)
    local encoded    = ld:EncodeForWoWAddonChannel(compressed)
 
-   if channel == "whisper" then
+   if target == "group" then
+      self:SendCommMessage(prefix, encoded, self:GetGroupChannel(), nil, prio, callback, callbackarg)
+   elseif target == "guild" then
+      self:SendCommMessage(prefix, encoded, "GUILD", nil, prio, callback, callbackarg)
+   else
       if target:GetRealm() == addon.realmName then -- Our realm
-         addon:SendCommMessage(prefix, encoded, channel, target)
+         self:SendCommMessage(prefix, encoded, "WHISPER", target, prio, callback, callbackarg)
       else
          -- Remake command to be "xrealm" and put target and command in the table
          serialized = addon:Serialize("xrealm", {target, command, ...})
          compressed = ld:CompressDelfate(serialized, self.compresslevel)
          encoded    = ld:EncodeForWoWAddonChannel(compressed)
-         addon:SendCommMessage(prefix, encoded, self:GetGroupChannel())
-      end
-   else
-      if target == "group" then
-         addon:SendCommMessage(prefix, encoded, self:GetGroupChannel())
-      elseif target == "guild" then
-         addon:SendCommMessage(prefix, encoded, "GUILD")
-      else
-         error(format("Unknown channel %s in SendComm. Command = %s", tostring(target), command), 2)
+         self:SendCommMessage(prefix, encoded, self:GetGroupChannel(), nil, prio, callback, callbackarg)
       end
    end
 end
