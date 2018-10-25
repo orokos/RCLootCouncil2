@@ -11,6 +11,7 @@ local ld = LibStub("LibDeflate")
 local Comms = {}
 local private = {}
 addon.Comms = Comms
+Comms.private = private
 
 addon.Comms.Prefixes = {
    MAIN     = "RCLC",
@@ -66,8 +67,7 @@ end
 function Comms:Send (args)
    assert(args.data)
    assert(args.command)
-   assert(args.target)
-   private:SendComm(args.prefix or self.Prefixes.MAIN, args.target, args.prio, args.callback, args.callbackarg, args.command, args.data)
+   private:SendComm(args.prefix or self.Prefixes.MAIN, args.target or "group", args.prio, args.callback, args.callbackarg, args.command, args.data)
 end
 
 function private:SendComm(prefix, target, prio, callback, callbackarg, command, ...)
@@ -113,11 +113,13 @@ function private:ReceiveComm(prefix, encodedMsg, distri, sender)
 end
 
 function private:FireCmd (prefix, distri, sender, command, data)
-   for _,v in ipairs(self.commands[prefix][command]) do
-      if type(v.func) == "text" then
-         v.mod[v.func](v.mod, command, data, distri, sender)
-      else
-         v.func(v.mod, command, data, distri, sender)
+   if self.commands[prefix][command] then
+      for _,v in ipairs(self.commands[prefix][command]) do
+         if type(v.func) == "text" then
+            v.mod[v.func](v.mod, command, data, distri, sender)
+         else
+            v.func(v.mod, command, data, distri, sender)
+         end
       end
    end
 end
