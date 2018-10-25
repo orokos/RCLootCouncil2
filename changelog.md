@@ -12,9 +12,140 @@
 * Added `:GetNumButtons`.
 
 
+### v2.9.3
+---
+* **Loot Status**  
+* Added a display of whom have looted the boss to the voting frame.
+
+
+* **Add command**
+* The "/rc add" command have been extended to optionally include a player name.
+* Simply type the name of a group member before any items you add.
+* Unless invalid, that player will be added as the owner of the item, which will allow the TradeUI to do it's thing.
+* Note: You must add a space after the player name.
+
+* **Moveable buttons options**
+* Buttons and responses can now be moved up/down in the options menu to easily change their order.
+* This can also be done on the "Award Reasons".
+
+
+
+### v2.9.2
+---
+###### Bugfixes
+* *Fixed issue with dropdown menus that had sneaked in at the last minute.*
+
+
+### v2.9.1
+---
+
+* Added local chat print option to all announcements.
+* Added a custom number of days input to loot history mass deletion.
+
+
+###### Bugfixes
+* *BoE items are now no longer added to sessions when the option is turned off.*
+* *Disabled all ML registrations in pvp (#354).*
+* *Added a patch and fix for Blizzards and others taint of dropdown menus (#358, #361, #366).*
+* *Wands and other weapons are now correctly identified as MainHand weapons (#368).*
+* *The TradeUI will now be shown if using a different locale than the ML (#370).*
+
+
+
+### v2.9.0
+---
+* **Appearance**
+* Added a new default Battle for Azeroth skin.
+* Remember you can change the appearance in the options menu.
+* Added a different colored frame for when rolling for items you own yourself.
+
+
+* **Buttons and Responses**
+* ~~Removed~~ Tier and relic buttons.
+* Added new buttons for every gear slot available.
+* You can now set custom buttons and responses for each type of gear, and even groups of gear such as Azerite Armor.
+* By default none of these are enabled, and must be added manually. As always only the group leader's set of buttons is used.
+* The new buttons are not backwards compatible with older versions, but altered default buttons/responses have been migrated.
+
+
+* **Loot History Mass Deletion**
+* It's now possible to delete multiple entries at once from the loot history.
+* Just go to the options menu ("/rc config") and have a look at the loot history settings.
+* Currently delete by name, patch, and number of days is supported - let me know if you need more.
+
+
+* **Candidate Loot Status**
+* The backend of this has been implemented.
+* As this was a lot harder to do than anticipated, I still need a bit more time to ensure it's working.
+
+
+* Added Battle for Azeroth trinkets to the autopass table.
+* Non-tradeable and rejected trades from PL are now registered in the loot history.
+* Quest and crafting items are now always ignored.
+
+
+###### Bugfixes
+* *Fixed EQDKP Plus exports (#360).*
+* *All item icons are now shift-right-clickable to see Azerite Traits.*
+
+
+###### Dev
+* Changed parameters in `UpdateAndSendRecentTradableItem()` to contain the table itself.
+* Changed comms `tradeable` and `non_tradeable` to include boss guid as the last parameter.
+* Added to new comms `looted` and `fakeLoot` to deal with looting status.
+* Changed the structure of `db.responses` and `db.buttons`.
+* Removed `:GetResponseText` and the likes. Use the new `:GetResponse` and `:GetButtons` functions.
+* Changed `mldb` to fit the new scheme, which includes inheritance from normal db.
+* Removed a few values from the lootTable.
+
+
+### v2.8.3
+---
+* **Trading**
+* The Group Leader now has an option to see whenever candidates trades items to the winners.
+* A warning is printed if a candidate trades an awarded item to the wrong person.
+
+
+* **Personal Loot**
+* The council can now see all items looted whether tradeable or not.
+* New buttons will appear for any items that can't be added to the session under the voting frame.
+* Usage options have been updated to only include PL options.
+
+
+* **Allow Keeping**
+* The Group Leader can now choose whether candidates can keep their items.
+* If enabled (disabled by default) candidates will see a popup asking if the want to keep the loot whenever they loot a tradeable item.
+
+
+###### Bugfixes
+* *Removed usage popup for non group leaders.*
+* *Usage popup should be more reliable (#350).*
+
+
+###### Dev
+* Two new comm messages (`not_tradeable` and `rejected_trade`).
+* Added UI section. This is the beginning of a consolidation of UI elements - everything will use this format soon ish.
+* Backwards compatibility isn't broken yet, but will be at some point.
+
+### v2.8.2
+---
+
+* **TradeUI**
+* Added an indicator for when you're in range of the trade target.
+* When in range, simply click the row in the TradeUI to initiate trade.
+* Note: There seems to be issues with automatically adding multiple items at once.
+* It also seems like something has changed that doesn't allow for as automatic trading as I'd hoped.
+
+
+###### Bugfixes
+* *Fixed an issue preventing automatic trading (#347).*
+
 
 ### v2.8.1
 ---
+###### Bugfixes
+* *Fixed a few issues with the TradeUI (#343, #344).*
+
 ###### Dev
 * Added two new comm messages for when RCLootCouncil handles loot. See top of core.lua.
 

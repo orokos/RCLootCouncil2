@@ -34,6 +34,7 @@ function TradeUI:OnInitialize()
       { name = "", width = 120,},          -- Item Link
       { name = "", width = ROW_HEIGHT - 5},-- Arrow
       { name = "", width = 100,},          -- Recipient
+      { name = "", width = 40,},           -- Trade
    }
    self:Enable()
 end
@@ -61,18 +62,21 @@ end
 
 -- By default, TradeUI hides when empty
 function TradeUI:Show(forceShow)
+   addon:Debug("TradeUI:Show()", forceShow)
    self.frame = self:GetFrame()
-   update_targets_timer = self:ScheduleRepeatingTimer("Update", UPDATE_TIME_INTERVAL)
+   update_targets_timer = self:ScheduleRepeatingTimer(function() self.frame.st:Refresh() end, UPDATE_TIME_INTERVAL)
    self:Update(forceShow)
 end
 
 function TradeUI:Hide()
+   addon:Debug("TradeUI:Hide()")
    self:CancelTimer(update_targets_timer)
    self.frame:Hide()
 end
 
 function TradeUI:Update(forceShow)
    if not self.frame then return self:Show(forceShow) end
+   wipe(self.frame.rows)
    for k, v in ipairs(addon.ItemStorage:GetAllItemsOfType("to_trade")) do
       self.frame.rows[k] = {
          link = v.link,
@@ -82,6 +86,7 @@ function TradeUI:Update(forceShow)
             {value = v.link},
             {value = "-->"},
             {value = addon.Ambiguate(v.args.recipient), color = addon:GetClassColor(addon.candidates[v.args.recipient] and addon.candidates[v.args.recipient].class or "nothing")},
+            {value = _G.TRADE, color = self.GetTradeLabelColor, colorargs = {self, v.args.recipient},},
          }
       }
    end
@@ -132,12 +137,11 @@ function TradeUI:OnEvent_TRADE_SHOW (event, ...)
    self.isTrading = true
    wipe(self.tradeItems)
    self.tradeTarget = addon:UnitName("NPC")
-   if addon.isMasterLooter	then
-      local count = self:GetNumAwardedInBagsToTradeWindow()
-      if count > 0 then
-         -- TODO Make this optionally automatic
-         LibDialog:Spawn("RCLOOTCOUNCIL_TRADE_ADD_ITEM", {count=count})
-      end
+   local count = self:GetNumAwardedInBagsToTradeWindow()
+
+   if count > 0 then
+      -- TODO Make this optionally automatic
+      LibDialog:Spawn("RCLOOTCOUNCIL_TRADE_ADD_ITEM", {count=count})
    end
 end
 
@@ -160,7 +164,16 @@ end
 function TradeUI:OnEvent_UI_INFO_MESSAGE (event, ...)
    if select(1, ...) == _G.LE_GAME_ERR_TRADE_COMPLETE then -- Trade complete. Remove items from db.baggedItems if traded to winners
       addon:Debug("TradeUI: Traded item(s) to", self.tradeTarget)
+      -- TODO This records every single item we trade - modify to only do stuff with items we are actively handling
       for _, link in ipairs(self.tradeItems) do
+         local Item = addon.ItemStorage:GetItem(link)
+         if Item and addon:UnitIsUnit(self.tradeTarget, Item.args.recipient) then
+            -- REVIEW This check is probably redundant, but currently TRADE_ACCEPT_UPDATE just adds all traded items, not just those we track
+            addon:SendCommand("group", "trade_complete", link, self.tradeTarget, addon.playerName)
+         elseif Item and not addon:UnitIsUnit(self.tradeTarget, Item.args.recipient) then
+            -- Player trades the item to someone else than the winner
+            addon:SendCommand("group", "trade_WrongWinner", link, self.tradeTarget, addon.playerName, Item.args.recipient)
+         end
          addon.ItemStorage:RemoveItem(link)
       end
       self:Update()
@@ -180,33 +193,32 @@ function TradeUI:GetNumAwardedInBagsToTradeWindow()
 end
 
 function TradeUI:AddAwardedInBagsToTradeWindow()
-	if addon.isMasterLooter then
-      local tradeIndex = 1
-      local items = addon.ItemStorage:GetAllItemsMultiPred(
-         funcTradeTargetIsRecipient, funcItemHasMoreTimeLeft, funcStorageTypeIsToTrade
-      )
-      for k, Item in ipairs(items) do
-         while (GetTradePlayerItemInfo(tradeIndex)) do
-				tradeIndex = tradeIndex	+ 1
-			end
-			if tradeIndex > _G.MAX_TRADE_ITEMS - 1 then -- All available slots used (The last trade slot is "Will not be traded" slot).
-				break
-			end
-         local c,s = addon.ItemStorage:GetItemContainerSlot(Item)
-         if not c then -- Item is gone?!
-            -- TODO Print something to the user?
-            return addon:Debug("Error TradeUI:", "Item missing when attempting to trade", Item.link, self.tradeTarget)
-         end
-         if self.trading then -- REVIEW Redundant?
-            local _, _, locked, _, _, _, link = GetContainerItemInfo(c, s)
-            if addon:ItemIsItem(link, Item.link) and not locked then -- Extra check, probably also redundant
-               ClearCursor()
-					PickupContainerItem(c, s)
-					ClickTradeButton(tradeIndex)
-            end
+   local tradeIndex = 1
+   local items = addon.ItemStorage:GetAllItemsMultiPred(
+      funcTradeTargetIsRecipient, funcItemHasMoreTimeLeft, funcStorageTypeIsToTrade
+   )
+   addon:Debug("Number of items to trade:", #items)
+   for k, Item in ipairs(items) do
+      if k > _G.MAX_TRADE_ITEMS - 1 then -- All available slots used (The last trade slot is "Will not be traded" slot).
+			break
+		end
+      local c,s = addon.ItemStorage:GetItemContainerSlot(Item)
+      if not c then -- Item is gone?!
+         addon:Print(L["trade_item_to_trade_not_found"])
+         return addon:Debug("Error TradeUI:", "Item missing when attempting to trade", Item.link, self.tradeTarget)
+      end
+      if self.isTrading then
+         addon:Debug("#Trading", k)
+         local _, _, locked, _, _, _, link = GetContainerItemInfo(c, s)
+         if addon:ItemIsItem(link, Item.link) then -- Extra check, probably also redundant
+            ClearCursor()
+				PickupContainerItem(c, s)
+				ClickTradeButton(k)
          end
       end
-	end
+   end
+   -- TradeFrameTradeButton:Click() REVIEW When calling this, it seems trade is accepted and then immediately unaccepted. Called it through a timer yield ADDON_ACTION_BLOCKED error.
+   -- It might just be protected (HW) after all, but it's odd it doesn't always produce an error.
 end
 
 --------------------------------------------------------
@@ -234,7 +246,7 @@ function TradeUI:GetFrame()
    f.st:RegisterEvents({
       ["OnClick"] = function(rowFrame, cellFrame, data, cols, row, realrow, column, table, button, ...)
          if CheckInteractDistance(Ambiguate(data[realrow].winner, "short"), 2) then -- 2 for trade distance
-            InitiateTrade("target")
+            InitiateTrade(Ambiguate(data[realrow].winner, "short"))
          else
             addon:Debug("TradeUI row OnClick - unit not in trade distance")
          end
@@ -253,4 +265,8 @@ function TradeUI:GetFrame()
    end)
 
    return f
+end
+
+function TradeUI:GetTradeLabelColor(target)
+   return CheckInteractDistance(Ambiguate(target, "short"), 2) and {r=0,g=1,b=0,a=1} or {r=1,g=0,b=0,a=1}
 end

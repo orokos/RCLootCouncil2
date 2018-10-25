@@ -24,9 +24,10 @@ local selectedDate, selectedName, filterMenu, moreInfo, moreInfoData
 local rightClickMenu;
 local ROW_HEIGHT = 20;
 local NUM_ROWS = 15;
+local epochDates = {} -- [DateTime] = epoch
 
 --globals
-local tinsert, tostring, getglobal,pairs = tinsert, tostring, getglobal, pairs
+local tinsert, tostring, getglobal, pairs, ipairs, tremove, strsplit = tinsert, tostring, getglobal, pairs, ipairs, tremove, strsplit
 
 function LootHistory:OnInitialize()
 	self.exportSelection = "tsv"
@@ -50,10 +51,10 @@ function LootHistory:OnInitialize()
 		{name = L["Reason"],	width = 220, comparesort = self.ResponseSort,  sortnext = 2},							-- Response aka the text supplied to lootDB...response
 		{name = "",				width = ROW_HEIGHT},																					-- Delete button
 	}
-	filterMenu = CreateFrame("Frame", "RCLootCouncil_LootHistory_FilterMenu", UIParent, "Lib_UIDropDownMenuTemplate")
-	rightClickMenu = CreateFrame("Frame", "RCLootCouncil_LootHistory_RightclickMenu", UIParent, "Lib_UIDropDownMenuTemplate")
-	Lib_UIDropDownMenu_Initialize(filterMenu, self.FilterMenu, "MENU")
-	Lib_UIDropDownMenu_Initialize(rightClickMenu, self.RightClickMenu, "MENU")
+	filterMenu = CreateFrame("Frame", "RCLootCouncil_LootHistory_FilterMenu", UIParent, "L_UIDropDownMenuTemplate")
+	rightClickMenu = CreateFrame("Frame", "RCLootCouncil_LootHistory_RightclickMenu", UIParent, "L_UIDropDownMenuTemplate")
+	L_UIDropDownMenu_Initialize(filterMenu, self.FilterMenu, "MENU")
+	L_UIDropDownMenu_Initialize(rightClickMenu, self.RightClickMenu, "MENU")
 	--MoreInfo
 	self.moreInfo = CreateFrame( "GameTooltip", "RCLootHistoryMoreInfo", nil, "GameTooltipTemplate" )
 end
@@ -202,6 +203,63 @@ function LootHistory:BuildData()
 	self.frame.name:SetData(nameData, true)
 end
 
+function LootHistory:GetAllRegisteredCandidates()
+	local names = {}
+	lootDB = addon:GetHistoryDB()
+	for name, v in pairs(lootDB) do
+		for _, v in ipairs(v) do
+			if v.class then
+				names[name] = {name = addon.Ambiguate(name), color = addon:GetClassColor(v.class)}
+				break
+			end
+		end
+	end
+	return names
+end
+
+function LootHistory:DeleteAllEntriesByName(name)
+	addon:Debug("Deleting all loot history entries for ", name)
+	if not lootDB[name] then return addon:Debug("ERROR", name, "wasn't registered in the lootDB!") end
+	addon:Print(format(L["Succesfully deleted %d entries from %s"], #lootDB[name], name))
+	lootDB[name] = nil
+	if self.frame and self.frame:IsVisible() then -- Only update if we're viewing it
+		self:BuildData()
+		self.frame.st:SortData()
+	end
+end
+
+function LootHistory:DeleteEntriesOlderThanEpoch(epoch)
+	addon:Debug("DeleteEntriesOlderThanEpoch", epoch)
+	local removal = {} -- Create a list of the entries to be removed
+	for name, v in pairs(lootDB) do
+		removal[name] = {}
+		local num = 1
+		for i,v in ipairs(v) do
+			local index = v.date..v.time
+			if not epochDates[index] then
+				self:AddEpochDate(v.date, v.time)
+			end
+			if epochDates[index] < epoch then
+				removal[name][num] = i
+				num = num + 1
+			end
+		end
+	end
+	-- Remove the entries in reverse order for a small speed upgrade
+	local sum = 0
+	for name, v in pairs(removal) do
+		for i = #v, 1, -1 do
+			tremove(lootDB[name], i)
+		end
+		sum = sum + #v
+	end
+	addon:Print(format(L["Succesfully deleted %d entries"], sum))
+	if self.frame and self.frame:IsVisible() then
+		self:BuildData()
+		self.frame.st:SortData()
+	end
+end
+
 function LootHistory.FilterFunc(table, row)
 	local nameAndDate = true -- default to show everything
 	if selectedName and selectedDate then
@@ -262,7 +320,7 @@ function LootHistory.SetCellResponse(rowFrame, frame, data, cols, row, realrow, 
 	if args.color and type(args.color) == "table" then -- Never version saves the color with the entry
 		frame.text:SetTextColor(unpack(args.color))
 	elseif args.responseID and args.responseID > 0 then -- try to recreate color from ID
-		frame.text:SetTextColor(addon:GetResponseColor(args.responseID, args.tokenRoll, args.relicRoll))
+		frame.text:SetTextColor(unpack(addon:GetResponse("default", args.responseID).color))
 	else -- default to white
 		frame.text:SetTextColor(1,1,1,1)
 	end
@@ -286,7 +344,7 @@ function LootHistory.SetCellDelete(rowFrame, frame, data, cols, row, realrow, co
 			tremove(lootDB[name], num)
 			tremove(data, realrow)
 
-			for _, v in pairs(data) do -- Update data[realrow].num for other rows, they are CHANGED !!!
+			for _, v in pairs(data) do -- Update data[realrow].num for other rows, they are changed !!!
 				if v.name == name then
 					if v.num >= num then
 						v.num = v.num - 1
@@ -305,22 +363,24 @@ function LootHistory.SetCellDelete(rowFrame, frame, data, cols, row, realrow, co
 	end)
 end
 
+function LootHistory:AddEpochDate(date, tim)
+	local d, m, y = strsplit("/", date, 3)
+	local h, min, s = strsplit(":", tim, 3)
+	epochDates[date..tim] = time({year = "20"..y, month = m, day = d, hour = h, min = min, sec = s})
+end
+
 function LootHistory.DateTimeSort(table, rowa, rowb, sortbycol)
 	local cella, cellb = table:GetCell(rowa, sortbycol), table:GetCell(rowb, sortbycol);
-	if not (cella.args.epoch and cellb.args.epoch) then
-		local timea, datea, timeb, dateb = cella.args.time, cella.args.date, cellb.args.time, cellb.args.date
-		local d, m, y = strsplit("/", datea, 3)
-		local h, min, s = strsplit(":", timea, 3)
-		cella.args.epoch = time({year = "20"..y, month = m, day = d, hour = h, min = min, sec = s})
-		d, m, y = strsplit("/", dateb, 3)
-		h, min, s = strsplit(":", timeb, 3)
-		cellb.args.epoch = time({year = "20"..y, month = m, day = d, hour = h, min = min, sec = s})
+	local indexa, indexb = cella.args.date..cella.args.time, cellb.args.date..cellb.args.time
+	if not (epochDates[indexa] and epochDates[indexb]) then
+		LootHistory:AddEpochDate(cella.args.date, cella.args.time)
+		LootHistory:AddEpochDate(cellb.args.date, cellb.args.time)
 	end
 	local direction = table.cols[sortbycol].sort or table.cols[sortbycol].defaultsort or "asc";
 	if direction:lower() == "asc" then
-		return cella.args.epoch < cellb.args.epoch
+		return epochDates[indexa] < epochDates[indexb]
 	else
-		return cella.args.epoch > cellb.args.epoch
+		return epochDates[indexa] > epochDates[indexb]
 	end
 end
 
@@ -352,7 +412,7 @@ function LootHistory.ResponseSort(table, rowa, rowb, sortbycol)
 		if lootDB[rowa.name][rowa.num].isAwardReason then
 			a = db.awardReasons[aID] and db.awardReasons[aID].sort or 500
 		else
-			a = addon:GetResponseSort(aID) or 500
+			a = addon:GetResponse(nil, aID).sort or 500
 		end
 	else
 		-- 500 will be below award reasons and just above status texts
@@ -363,7 +423,7 @@ function LootHistory.ResponseSort(table, rowa, rowb, sortbycol)
 		if lootDB[rowb.name][rowb.num].isAwardReason then
 			b = db.awardReasons[bID] and db.awardReasons[bID].sort or 500
 		else
-			b = addon:GetResponseSort(bID) or 500
+			b = addon:GetResponse(nil, bID).sort or 500
 		end
 
 	else
@@ -517,7 +577,7 @@ function LootHistory:GetFrame()
 					self:UpdateMoreInfo(rowFrame, cellFrame, data, cols, row, realrow, column, table, button, ...)
 				elseif button == "RightButton" then
 					rightClickMenu.datatable = data[realrow]
-					Lib_ToggleDropDownMenu(1,nil,rightClickMenu,cellFrame,0,0)
+					L_ToggleDropDownMenu(1,nil,rightClickMenu,cellFrame,0,0)
 				end
 			end
 			return false
@@ -606,9 +666,9 @@ function LootHistory:GetFrame()
 	-- Filter
 	local b4 = addon:CreateButton(_G.FILTER, f.content)
 	b4:SetPoint("RIGHT", f.importBtn, "LEFT", -10, 0)
-	b4:SetScript("OnClick", function(self) Lib_ToggleDropDownMenu(1, nil, filterMenu, self, 0, 0) end )
+	b4:SetScript("OnClick", function(self) L_ToggleDropDownMenu(1, nil, filterMenu, self, 0, 0) end )
 	f.filter = b4
-	Lib_UIDropDownMenu_Initialize(b4, self.FilterMenu)
+	L_UIDropDownMenu_Initialize(b4, self.FilterMenu)
 	f.filter:SetSize(125,25) -- Needs extra convincing to stay at 25px height
 
 	-- Export selection (AceGUI-3.0)
@@ -811,11 +871,11 @@ end
 -- @section Dropdowns.
 ---------------------------------------------------
 function LootHistory.FilterMenu(menu, level)
-	local info = Lib_UIDropDownMenu_CreateInfo()
+	local info = L_UIDropDownMenu_CreateInfo()
 	if level == 1 then -- Redundant
 		-- Build the data table:
 		local data = {["STATUS"] = true, ["PASS"] = true, ["AUTOPASS"] = true}
-		for i = 1, addon.mldb.numButtons or db.numButtons do
+		for i = 1, addon:GetNumButtons() do
 			data[i] = i
 		end
 		if not db.modules["RCLootHistory"].filters then -- Create the db entry
@@ -826,19 +886,19 @@ function LootHistory.FilterMenu(menu, level)
 		info.isTitle = true
 		info.notCheckable = true
 		info.disabled = true
-		Lib_UIDropDownMenu_AddButton(info, level)
-		info = Lib_UIDropDownMenu_CreateInfo()
+		L_UIDropDownMenu_AddButton(info, level)
+		info = L_UIDropDownMenu_CreateInfo()
 
 		for k in ipairs(data) do -- Make sure normal responses are on top
-			info.text = addon:GetResponseText(k)
-			info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(k))
+			info.text = addon:GetResponse("default",k).text
+			info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(nil, k))
 			info.func = function()
 				addon:Debug("Update Filter")
 				db.modules["RCLootHistory"].filters[k] = not db.modules["RCLootHistory"].filters[k]
 				LootHistory:Update()
 			end
 			info.checked = db.modules["RCLootHistory"].filters[k]
-			Lib_UIDropDownMenu_AddButton(info, level)
+			L_UIDropDownMenu_AddButton(info, level)
 		end
 		for k in pairs(data) do -- A bit redundency, but it makes sure these "specials" comes last
 			if type(k) == "string" then
@@ -846,8 +906,8 @@ function LootHistory.FilterMenu(menu, level)
 					info.text = L["Status texts"]
 					info.colorCode = "|cffde34e2" -- purpleish
 				else
-					info.text = addon:GetResponseText(k)
-					info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(k))
+					info.text = addon:GetResponse("default",k).text
+					info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(nil, k))
 				end
 				info.func = function()
 					addon:Debug("Update Filter")
@@ -855,7 +915,7 @@ function LootHistory.FilterMenu(menu, level)
 					LootHistory:Update()
 				end
 				info.checked = db.modules["RCLootHistory"].filters[k]
-				Lib_UIDropDownMenu_AddButton(info, level)
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 		end
 	end
@@ -895,23 +955,7 @@ LootHistory.rightClickEntries = {
 		{ -- 2 EDIT_RESPONSE
 			special = "EDIT_RESPONSE",
 		},
-		{ -- 3 Tier tokens ...
-			text = L["Tier Tokens ..."],
-			onValue = "EDIT_RESPONSE",
-			value = "TIER_TOKENS",
-			hasArrow = true,
-			notCheckable = true,
-			disabled = function() return not db.tierButtonsEnabled end,
-		},
-		{ -- 4 Relics
-			text = _G.INVTYPE_RELIC.." ...",
-			onValue = "EDIT_RESPONSE",
-			value = "RELICS",
-			hasArrow = true,
-			notCheckable = true,
-			disabled = function() return not db.relicButtonsEnabled end,
-		},
-		{ -- 5 Award Reasons ...
+		{ -- 3 Award Reasons ...
 			text = L["Award Reasons"] .. " ...",
 			onValue = "EDIT_RESPONSE",
 			value = "AWARD_REASON",
@@ -920,13 +964,7 @@ LootHistory.rightClickEntries = {
 		},
 	},
 	{ -- Level 3
-		{ -- 1 TIER_TOKENS
-			special = "TIER_TOKENS",
-		},
-		{ -- 2 RELICS
-			special = "RELICS",
-		},
-		{ -- 3 AWARD_REASON
+		{ -- 1 AWARD_REASON
 			special = "AWARD_REASON",
 		}
 	},
@@ -936,13 +974,13 @@ LootHistory.rightClickEntries = {
 -- NOTE Changing e.g. a tier token item's response to a non-tier token response is possible display wise,
 -- but it will retain it's tier token tag, and vice versa. Can't decide whether it's a feature or bug.
 function LootHistory.RightClickMenu(menu, level)
-	local info = Lib_UIDropDownMenu_CreateInfo()
+	local info = L_UIDropDownMenu_CreateInfo()
 	local data = menu.datatable
 
-	local value = _G.LIB_UIDROPDOWNMENU_MENU_VALUE
+	local value = _G.L_UIDROPDOWNMENU_MENU_VALUE
 	if not LootHistory.rightClickEntries[level] then return end
 	for i, entry in ipairs(LootHistory.rightClickEntries[level]) do
-		info = Lib_UIDropDownMenu_CreateInfo()
+		info = L_UIDropDownMenu_CreateInfo()
 		if not entry.special then
 			if not entry.onValue or entry.onValue == value then
 				if not (entry.hidden and type(entry.hidden) == "function" and entry.hidden(data.name, data)) or not entry.hidden then
@@ -955,7 +993,7 @@ function LootHistory.RightClickMenu(menu, level)
 							info[name] = val
 						end
 					end
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 			end
 
@@ -1016,12 +1054,12 @@ function LootHistory.RightClickMenu(menu, level)
 					LootHistory.frame.st:SortData()
 					addon:SendMessage("RCHistory_NameEdit", data)
 				end
-				Lib_UIDropDownMenu_AddButton(info, level)
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 		elseif value == "EDIT_RESPONSE" and entry.special == value then
 			local v;
-			for i = 1, db.numButtons do
-				v = db.responses[i]
+			for i = 1, db.buttons.default.numButtons do
+				v = db.responses.default[i]
 				info.text = v.text
 				info.colorCode = "|cff"..addon:RGBToHex(unpack(v.color))
 				info.notCheckable = true
@@ -1029,8 +1067,8 @@ function LootHistory.RightClickMenu(menu, level)
 					addon:Debug("Changing response id @", data.name, "from", data.response, "to", i)
 					local entry = lootDB[data.name][data.num]
 					entry.responseID = i
-					entry.response = addon:GetResponseText(i)
-					entry.color = {addon:GetResponseColor(i)}
+					entry.response = addon:GetResponse("default",i).text
+					entry.color = {addon:GetResponseColor("default", i)}
 					entry.isAwardReason = nil
 					entry.tokenRoll = nil
 					entry.relicRoll = nil
@@ -1039,11 +1077,11 @@ function LootHistory.RightClickMenu(menu, level)
 					LootHistory.frame.st:SortData()
 					addon:SendMessage("RCHistory_ResponseEdit", data)
 				end
-				Lib_UIDropDownMenu_AddButton(info, level)
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 
 			if addon.debug then
-				for k,v in pairs(db.responses) do
+				for k,v in pairs(db.responses.default) do
 					if type(k) ~= "number" and k ~= "tier" and k ~= "relic" then
 						info.text = v.text
 						info.colorCode = "|cff"..addon:RGBToHex(unpack(v.color))
@@ -1052,62 +1090,16 @@ function LootHistory.RightClickMenu(menu, level)
 							addon:Debug("Changing response id @", data.name, "from", data.response, "to", i)
 							local entry = lootDB[data.name][data.num]
 							entry.responseID = k
-							entry.response = addon:GetResponseText(k)
-							entry.color = {addon:GetResponseColor(k)}
+							entry.response = addon:GetResponse("default",k).text
+							entry.color = {addon:GetResponseColor("default", k)}
 							entry.isAwardReason = nil
 							data.response = k
 							data.cols[6].args = {color = entry.color, response = entry.response, responseID = k}
 							LootHistory.frame.st:SortData()
 						end
-						Lib_UIDropDownMenu_AddButton(info, level)
+						L_UIDropDownMenu_AddButton(info, level)
 					end
 				end
-			end
-
-		elseif value == "TIER_TOKENS" and entry.special == value and db.tierButtonsEnabled then
-			for k,v in ipairs(db.responses.tier) do
-				if k > db.tierNumButtons then break end
-				info.text = v.text
-				info.colorCode = "|cff"..addon:RGBToHex(unpack(v.color))
-				info.notCheckable = true
-				info.func = function()
-					addon:Debug("Changing tier response id @", data.name, "from", data.response, "to", k)
-					local entry = lootDB[data.name][data.num]
-					entry.responseID = k
-					entry.response = v.text
-					entry.color = {unpack(v.color)}
-					entry.isAwardReason = nil
-					entry.tokenRoll = true
-					entry.relicRoll = false
-					data.response = k
-					data.cols[6].args = {color = entry.color, response = entry.response, responseID = k, tokenRoll = true}
-					LootHistory.frame.st:SortData()
-					addon:SendMessage("RCHistory_ResponseEdit", data)
-				end
-				Lib_UIDropDownMenu_AddButton(info, level)
-			end
-
-		elseif value == "RELICS" and entry.special == value and db.relicButtonsEnabled then
-			for k,v in ipairs(db.responses.relic) do
-				if k > db.relicNumButtons then break end
-				info.text = v.text
-				info.colorCode = "|cff"..addon:RGBToHex(unpack(v.color))
-				info.notCheckable = true
-				info.func = function()
-					addon:Debug("Changing relic response id @", data.name, "from", data.response, "to", k)
-					local entry = lootDB[data.name][data.num]
-					entry.responseID = k
-					entry.response = v.text
-					entry.color = {unpack(v.color)}
-					entry.isAwardReason = nil
-					entry.tokenRoll = false
-					entry.relicRoll = true
-					data.response = k
-					data.cols[6].args = {color = entry.color, response = entry.response, responseID = k, relicRoll = true}
-					LootHistory.frame.st:SortData()
-					addon:SendMessage("RCHistory_ResponseEdit", data)
-				end
-				Lib_UIDropDownMenu_AddButton(info, level)
 			end
 
 		elseif value == "AWARD_REASON" and entry.special == value then
@@ -1130,7 +1122,7 @@ function LootHistory.RightClickMenu(menu, level)
 					LootHistory.frame.st:SortData()
 					addon:SendMessage("RCHistory_ResponseEdit", data)
 				end
-				Lib_UIDropDownMenu_AddButton(info, level)
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 		end
 	end
@@ -1310,7 +1302,7 @@ do
 						local hour,minute,second = strsplit(":",d.time,3)
 						local sinceEpoch = time({year = "20"..year, month = month, day = day,hour = hour,min = minute,sec=second})
 						itemsData = itemsData.."\t\t<item>\r\n"
-						.."\t\t\t<itemid>" .. addon:GetItemStringFromLink(d.lootWon) .. "</itemid>\r\n"
+						.."\t\t\t<itemid>" .. addon:GetItemStringClean(d.lootWon) .. "</itemid>\r\n"
 						.."\t\t\t<name>" .. addon:GetItemNameFromLink(d.lootWon) .. "</name>\r\n"
 						.."\t\t\t<member>" .. addon.Ambiguate(player) .. "</member>\r\n"
 						.."\t\t\t<time>" .. sinceEpoch .. "</time>\r\n"

@@ -56,13 +56,14 @@ function RCVotingFrame:OnInitialize()
 	-- The actual table being worked on, new entries should be added to this table "tinsert(RCVotingFrame.scrollCols, data)"
 	-- If you want to add or remove columns, you should do so on your OnInitialize. See RCVotingFrame:RemoveColumn() for removal.
 	self.scrollCols = {unpack(defaultScrollTableData)}
+	self.nonTradeablesButtons = {}
 
-	menuFrame = CreateFrame("Frame", "RCLootCouncil_VotingFrame_RightclickMenu", UIParent, "Lib_UIDropDownMenuTemplate")
-	filterMenu = CreateFrame("Frame", "RCLootCouncil_VotingFrame_FilterMenu", UIParent, "Lib_UIDropDownMenuTemplate")
-	enchanters = CreateFrame("Frame", "RCLootCouncil_VotingFrame_EnchantersMenu", UIParent, "Lib_UIDropDownMenuTemplate")
-	Lib_UIDropDownMenu_Initialize(menuFrame, self.RightClickMenu, "MENU")
-	Lib_UIDropDownMenu_Initialize(filterMenu, self.FilterMenu)
-	Lib_UIDropDownMenu_Initialize(enchanters, self.EnchantersMenu)
+	menuFrame = CreateFrame("Frame", "RCLootCouncil_VotingFrame_RightclickMenu", UIParent, "L_UIDropDownMenuTemplate")
+	filterMenu = CreateFrame("Frame", "RCLootCouncil_VotingFrame_FilterMenu", UIParent, "L_UIDropDownMenuTemplate")
+	enchanters = CreateFrame("Frame", "RCLootCouncil_VotingFrame_EnchantersMenu", UIParent, "L_UIDropDownMenuTemplate")
+	L_UIDropDownMenu_Initialize(menuFrame, self.RightClickMenu, "MENU")
+	L_UIDropDownMenu_Initialize(filterMenu, self.FilterMenu)
+	L_UIDropDownMenu_Initialize(enchanters, self.EnchantersMenu)
 end
 
 function RCVotingFrame:OnEnable()
@@ -79,12 +80,14 @@ function RCVotingFrame:OnEnable()
 	updateFrame:Show()
 	needUpdate = false
 	noUpdateTimeRemaining = 0
+	self.numNonTradeables = 0
 end
 
 function RCVotingFrame:OnDisable() -- We never really call this
 	self:Hide()
 	self.frame:SetParent(nil)
 	self.frame = nil
+	wipe(addon.lootStatus)
 	wipe(lootTable)
 	active = false
 	session = 1
@@ -92,6 +95,7 @@ function RCVotingFrame:OnDisable() -- We never really call this
 	updateFrame:Hide()
 	needUpdate = false
 	noUpdateTimeRemaining = 0
+	self.numNonTradeables = 0
 end
 
 function RCVotingFrame:Hide()
@@ -111,6 +115,11 @@ function RCVotingFrame:Show()
 end
 
 function RCVotingFrame:ReceiveLootTable(lt)
+	self:HideNonTradeables()
+	self.numNonTradeables = 0
+	for k,v in ipairs(addon.nonTradeables) do -- We might have received some before getting the lootTable
+		self:AddNonTradeable(v.link, v.owner, v.reason)
+	end
 	active = true
 	lootTable = CopyTable(lt)
 	self:Setup(lootTable)
@@ -305,6 +314,10 @@ function RCVotingFrame:OnCommReceived(prefix, serializedMsg, distri, sender)
 					end
 				end
 				self:SwitchSession(session)
+
+			elseif command == "not_tradeable" or command == "rejected_trade" then
+				self:AddNonTradeable(unpack(data), addon:UnitName(sender), command)
+
 			end
 		end
 	end
@@ -641,7 +654,7 @@ function RCVotingFrame:GetFrame()
 				if button == "RightButton" and row then
 					if active then
 						menuFrame.name = data[realrow].name
-						Lib_ToggleDropDownMenu(1, nil, menuFrame, cellFrame, 0, 0);
+						L_ToggleDropDownMenu(1, nil, menuFrame, cellFrame, 0, 0);
 					else
 						addon:Print(L["You cannot use the menu when the session has ended."])
 					end
@@ -701,6 +714,8 @@ function RCVotingFrame:GetFrame()
     end);
 	item:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -20)
 	item:SetSize(50,50)
+	item:EnableMouse(true)
+   item:RegisterForClicks("AnyUp")
 	f.itemIcon = item
 
 	f.itemTooltip = addon:CreateGameTooltip("votingframe", f.content)
@@ -778,7 +793,7 @@ function RCVotingFrame:GetFrame()
 	-- Filter
 	local b3 = addon:CreateButton(_G.FILTER, f.content)
 	b3:SetPoint("RIGHT", b1, "LEFT", -10, 0)
-	b3:SetScript("OnClick", function(self) Lib_ToggleDropDownMenu(1, nil, filterMenu, self, 0, 0) end )
+	b3:SetScript("OnClick", function(self) L_ToggleDropDownMenu(1, nil, filterMenu, self, 0, 0) end )
 	b3:SetScript("OnEnter", function() addon:CreateTooltip(L["Deselect responses to filter them"]) end)
 	b3:SetScript("OnLeave", function() addon:HideTooltip() end)
 	f.filter = b3
@@ -786,7 +801,7 @@ function RCVotingFrame:GetFrame()
 	-- Disenchant button
 	local b4 = addon:CreateButton(_G.ROLL_DISENCHANT, f.content)
 	b4:SetPoint("RIGHT", b3, "LEFT", -10, 0)
-	b4:SetScript("OnClick", function(self) Lib_ToggleDropDownMenu(1, nil, enchanters, self, 0, 0) end )
+	b4:SetScript("OnClick", function(self) L_ToggleDropDownMenu(1, nil, enchanters, self, 0, 0) end )
 	--b4:SetNormalTexture("Interface\\Icons\\INV_Enchant_Disenchant")
 --	b4:Hide() -- hidden by default
 	f.disenchant = b4
@@ -806,6 +821,15 @@ function RCVotingFrame:GetFrame()
 	rf.text = rft
 	rf:SetWidth(rft:GetStringWidth())
 	f.rollResult = rf
+
+	-- Loot Status
+	f.lootStatus = addon.UI:New("Text", f.content, " ")
+	f.lootStatus:SetTextColor(1,1,1,1) -- White for now
+	f.lootStatus:SetHeight(20)
+	f.lootStatus:SetWidth(150)
+	f.lootStatus:SetPoint("RIGHT", rf, "LEFT", -10, 0)
+	f.lootStatus:SetScript("OnLeave", addon.Utils.HideTooltip)
+	f.lootStatus.text:SetJustifyH("RIGHT")
 
 	-- Award string
 	local awdstr = f.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -842,6 +866,53 @@ function RCVotingFrame:GetFrame()
 	return f;
 end
 
+function RCVotingFrame:UpdateLootStatus()
+	if not next(addon.lootStatus) then return end -- Might not have any data
+	-- Find out which guid we're working with
+	local id, max = 0, 0
+	for k,v in pairs(addon.lootStatus) do
+		if v.num > max then
+			id = k
+			max = v.num
+		end
+	end
+	local looted, unlooted, fake = 0,0,0
+	local list = {} -- [name] = "status"
+	for name in pairs(addon.candidates) do
+		if addon.lootStatus[id].candidates[name] then -- They have looted
+			tinsert(list, {name = name, text = "|cff00ff00Looted"})
+			looted = looted + 1
+		elseif addon.lootStatus[id].fake[name] then -- fake loot
+			tinsert(list, {name = name, text = addon.lootStatus[id].fake[name] .. "|cffff0000 Fake loot|r"})
+			fake = fake + 1
+		else -- Unlooted
+			tinsert(list, {name = name, text = "|cffffff00Unlooted"})
+			unlooted = unlooted + 1
+		end
+	end
+	local num = 0
+	for k in pairs(addon.candidates) do num = num + 1 end
+	self.frame.lootStatus:SetText(format("Loot Status: |cffff0000%d|cffffffff/|cffffff00%d|cffffffff/|cff00ff00%d|cffffffff/%d|r", fake, unlooted, looted, num))
+	table.sort(list, function(a,b)
+		return a.name < b.name
+	end)
+	self.frame.lootStatus:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(UIParent, "ANCHOR_CURSOR")
+		GameTooltip:AddLine("Loot Status")
+		if addon.debug then
+			GameTooltip:AddLine("Debug")
+			for id, v in pairs(addon.lootStatus) do
+				GameTooltip:AddDoubleLine(id, v.num,1,1,1,1,1,1)
+			end
+			GameTooltip:AddLine(" ")
+		end
+		for _, v in ipairs(list) do
+			GameTooltip:AddDoubleLine(addon:GetUnitClassColoredName(v.name), v.text)
+		end
+		GameTooltip:Show()
+	end)
+end
+
 function RCVotingFrame:UpdatePeopleToVote()
 	local voters = {}
 	-- Find out who have voted
@@ -873,9 +944,7 @@ end
 function RCVotingFrame:UpdateSessionButton(i, texture, link, awarded)
 	local btn = sessionButtons[i]
 	if not btn then -- create the button
-		btn = CreateFrame("Button", "RCButton"..i, self.frame.sessionToggleFrame)
-		btn:SetSize(40,40)
-		--btn:SetText(i)
+		btn = addon.UI:NewNamed("IconBordered", self.frame.sessionToggleFrame, "RCSessionButton"..i, texture)
 		if i == 1 then
 			btn:SetPoint("TOPRIGHT", self.frame.sessionToggleFrame)
 		elseif mod(i,10) == 1 then
@@ -884,38 +953,51 @@ function RCVotingFrame:UpdateSessionButton(i, texture, link, awarded)
 			btn:SetPoint("TOP", sessionButtons[i-1], "BOTTOM", 0, -2)
 		end
 		btn:SetScript("Onclick", function() RCVotingFrame:SwitchSession(i); end)
-		btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
-		btn:GetHighlightTexture():SetBlendMode("ADD")
-		btn:SetNormalTexture(texture or "Interface\\InventoryItems\\WoWUnknownItem01")
-		btn:GetNormalTexture():SetDrawLayer("BACKGROUND")
 	end
 	-- then update it
 	btn:SetNormalTexture(texture or "Interface\\InventoryItems\\WoWUnknownItem01")
-	-- Set the colored border and tooltips
-	btn:SetBackdrop({
-		bgFile = "",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		edgeSize = 18,
-		--insets = { left = -4, right = -4, top = -4, bottom = -4 }
-	})
 	local lines = { format(L["Click to switch to 'item'"], link) }
 	if i == session then
-		btn:SetBackdropBorderColor(1,1,0,1) -- yellow
-		--btn:SetBackdropColor(1,1,1,1)
-		btn:GetNormalTexture():SetVertexColor(1,1,1)
+		btn:SetBorderColor("yellow")
 	elseif awarded then
-		btn:SetBackdropBorderColor(0,1,0,1) -- green
-		--btn:SetBackdropColor(1,1,1,0.8)
-		btn:GetNormalTexture():SetVertexColor(0.8,0.8,0.8)
+		btn:SetBorderColor("green")
 		tinsert(lines, L["This item has been awarded"])
 	else
-		btn:SetBackdropBorderColor(1,1,1,1) -- white
-		--btn:SetBackdropColor(0.5,0.5,0.5,0.8)
-		btn:GetNormalTexture():SetVertexColor(0.5,0.5,0.5)
+		btn:SetBorderColor("white") -- white
 	end
 	btn:SetScript("OnEnter", function() addon:CreateTooltip(unpack(lines)) end)
-	btn:SetScript("OnLeave", function() addon:HideTooltip() end)
 	return btn
+end
+
+function RCVotingFrame:AddNonTradeable(link, owner, reason)
+	self.numNonTradeables = self.numNonTradeables + 1
+	local texture = select(5, GetItemInfoInstant(link))
+	local b = addon.UI:New("IconBordered", self.frame.content, texture)
+	b:Desaturate()
+	if self.numNonTradeables == 1 then
+		b:SetPoint("TOPLEFT", self.frame.content, "BOTTOMLEFT", 0, -2)
+	else
+		b:SetPoint("LEFT", self.nonTradeablesButtons[self.numNonTradeables - 1], "RIGHT", 5)
+	end
+	b:SetScript("OnEnter", function()
+		addon:CreateHypertip(link)
+		GameTooltip:AddLine(" ")
+		GameTooltip:AddDoubleLine(L["Looted by:"], addon:GetUnitClassColoredName(addon.Ambiguate(owner)))
+		GameTooltip:AddDoubleLine(L["Non-tradeable reason:"], L["non_tradeable_reason_"..tostring(reason)], nil, nil, nil,1,1,1)
+		GameTooltip:Show()
+	end)
+	if reason == "rejected_trade" then
+		b:SetBorderColor("purple")
+	else
+		b:SetBorderColor("grey")
+	end
+	b:SetAlpha(0.7)
+	b:Show()
+	self.nonTradeablesButtons[self.numNonTradeables] = b
+end
+
+function RCVotingFrame:HideNonTradeables()
+	for _,v in ipairs(self.nonTradeablesButtons) do v:Hide() end
 end
 
 
@@ -958,38 +1040,32 @@ end
 
 function RCVotingFrame.SetCellRank(rowFrame, frame, data, cols, row, realrow, column, fShow, table, ...)
 	local name = data[realrow].name
-	local isTier = lootTable[session].candidates[name].isTier
-	local isRelic = lootTable[session].candidates[name].isRelic
 	frame.text:SetText(lootTable[session].candidates[name].rank)
-	frame.text:SetTextColor(addon:GetResponseColor(lootTable[session].candidates[name].response,isTier, isRelic))
+	frame.text:SetTextColor(addon:GetResponseColor(lootTable[session].equipLoc, lootTable[session].candidates[name].response))
 	data[realrow].cols[column].value = lootTable[session].candidates[name].rank or ""
 end
 
 function RCVotingFrame.SetCellRole(rowFrame, frame, data, cols, row, realrow, column, fShow, table, ...)
 	local name = data[realrow].name
-	local isTier = lootTable[session].candidates[name].isTier
-	local isRelic = lootTable[session].candidates[name].isRelic
 	local role = addon:TranslateRole(lootTable[session].candidates[name].role)
 	frame.text:SetText(role)
-	frame.text:SetTextColor(addon:GetResponseColor(lootTable[session].candidates[name].response,isTier,isRelic))
+	frame.text:SetTextColor(addon:GetResponseColor(lootTable[session].equipLoc, lootTable[session].candidates[name].response))
 	data[realrow].cols[column].value = role or ""
 end
 
 function RCVotingFrame.SetCellResponse(rowFrame, frame, data, cols, row, realrow, column, fShow, table, ...)
 	local name = data[realrow].name
-	local isTier = lootTable[session].candidates[name].isTier
-	local isRelic = lootTable[session].candidates[name].isRelic
-	local response = addon:GetResponseText(lootTable[session].candidates[name].response, isTier, isRelic)
+	local response = addon:GetResponse(lootTable[session].equipLoc, lootTable[session].candidates[name].response)
+	local text = response.text
 	if (IsInInstance() and select(4, UnitPosition("player")) ~= select(4, UnitPosition(Ambiguate(name, "short"))))
 		-- Mark as out of instance if the current player is in an instance and the raider is in other instancemap
 		or ((not IsInInstance()) and UnitPosition(Ambiguate(name, "short")) ~= nil) then
 		-- If the current player is not in an instance, mark as out of instance if 1st return of UnitPosition is not nil
 		-- This function returns nil if the raider is in any instance.
-		response = response.." ("..L["Out of instance"]..")"
+		text = text.." ("..L["Out of instance"]..")"
 	end
-	frame.text:SetText(response)
-
-	frame.text:SetTextColor(addon:GetResponseColor(lootTable[session].candidates[name].response, isTier, isRelic))
+	frame.text:SetText(text)
+	frame.text:SetTextColor(unpack(response.color))
 end
 
 function RCVotingFrame.SetCellIlvl(rowFrame, frame, data, cols, row, realrow, column, fShow, table, ...)
@@ -1143,13 +1219,7 @@ function RCVotingFrame.filterFunc(table, row)
 	end
 
 	if response == "AUTOPASS" or response == "PASS" or type(response) == "number" then
-		if lootTable[session].token and addon.mldb.tierButtonsEnabled and type(response) == "number"then
-			return db.modules["RCVotingFrame"].filters.tier[response]
-		elseif lootTable[session].relic and addon.mldb.relicButtonsEnabled and type(response) == "number" then
-			return db.modules["RCVotingFrame"].filters.relic[response]
-		else
-			return db.modules["RCVotingFrame"].filters[response]
-		end
+		return db.modules["RCVotingFrame"].filters[response]
 	else -- Filter out the status texts
 		return db.modules["RCVotingFrame"].filters["STATUS"]
 	end
@@ -1158,7 +1228,8 @@ end
 function ResponseSort(table, rowa, rowb, sortbycol)
 	local column = table.cols[sortbycol]
 	local a, b = table:GetRow(rowa), table:GetRow(rowb);
-	a, b = addon:GetResponseSort(lootTable[session].candidates[a.name].response), addon:GetResponseSort(lootTable[session].candidates[b.name].response)
+	a, b = addon:GetResponse(lootTable[session].equipLoc, lootTable[session].candidates[a.name].response).sort,
+	 		 addon:GetResponse(lootTable[session].equipLoc, lootTable[session].candidates[b.name].response).sort
 	if a == b then
 		if column.sortnext then
 			local nextcol = table.cols[column.sortnext];
@@ -1225,6 +1296,7 @@ function RCVotingFrame:GetAwardPopupData(session, name, data, reason)
 		link 			= lootTable[session].link,
 		isToken		= lootTable[session].token,
 		note		= data.note,
+		equipLoc		= lootTable[session].equipLoc,
 	}
 end
 
@@ -1242,6 +1314,7 @@ function RCVotingFrame:GetRerollData(session, isRoll, noAutopass)
 		classes = v.classes,
 		isRoll = isRoll,
 		noAutopass = noAutopass,
+		owner = v.owner,
 	}
 end
 
@@ -1302,8 +1375,8 @@ do
 	function RCVotingFrame.rennaounceOrRequestRollCreateCategoryButton(category)
 		return
 		{ -- 3 Reannounce (and request rolls) to candidate
-			onValue = function() return _G.LIB_UIDROPDOWNMENU_MENU_VALUE == "REANNOUNCE" or _G.LIB_UIDROPDOWNMENU_MENU_VALUE == "REQUESTROLL" end,
-			value = function() return _G.LIB_UIDROPDOWNMENU_MENU_VALUE.."_"..category end,
+			onValue = function() return _G.L_UIDROPDOWNMENU_MENU_VALUE == "REANNOUNCE" or _G.L_UIDROPDOWNMENU_MENU_VALUE == "REQUESTROLL" end,
+			value = function() return _G.L_UIDROPDOWNMENU_MENU_VALUE.."_"..category end,
 			text = function(candidateName) return RCVotingFrame.reannounceOrRequestRollText(candidateName, category) end,
 			notCheckable = true,
 			hasArrow = true,
@@ -1311,24 +1384,22 @@ do
 	end
 	-- The text of level2 and header of level 3 button of rennaounce (and request roll)
 	--@param category: Used for level2 text to determine what text to shown.
-	-- Level 3 text used the value of LIB_UIDROPDOWNMENU_MENU_VALUE to determine what to show
+	-- Level 3 text used the value of L_UIDROPDOWNMENU_MENU_VALUE to determine what to show
 	function RCVotingFrame.reannounceOrRequestRollText(candidateName, category)
-		if type(LIB_UIDROPDOWNMENU_MENU_VALUE) ~= "string" then return end
+		if type(L_UIDROPDOWNMENU_MENU_VALUE) ~= "string" then return end
 
 		local text = ""
-		if category == "CANDIDATE" or LIB_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") then
+		if category == "CANDIDATE" or L_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") then
 			text = addon:GetUnitClassColoredName(candidateName)
-		elseif category == "GROUP" or LIB_UIDROPDOWNMENU_MENU_VALUE:find("_GROUP$") then
+		elseif category == "GROUP" or L_UIDROPDOWNMENU_MENU_VALUE:find("_GROUP$") then
 			text = _G.FRIENDS_FRIENDS_CHOICE_EVERYONE
-		elseif category == "ROLL" or LIB_UIDROPDOWNMENU_MENU_VALUE:find("_ROLL$") then
+		elseif category == "ROLL" or L_UIDROPDOWNMENU_MENU_VALUE:find("_ROLL$") then
 			text = _G.ROLL..": "..(lootTable[session].candidates[candidateName].roll or "")
-		elseif category == "RESPONSE" or LIB_UIDROPDOWNMENU_MENU_VALUE:find("_RESPONSE$") then
-			local isTier = lootTable[session].candidates[candidateName].isTier
-			local isRelic = lootTable[session].candidates[candidateName].isRelic
-			text = L["Response"]..": ".."|cff"..(addon:RGBToHex(addon:GetResponseColor(lootTable[session].candidates[candidateName].response, isTier, isRelic)) or "ffffff")
-				..(addon:GetResponseText(lootTable[session].candidates[candidateName].response, isTier, isRelic) or "").."|r"
+		elseif category == "RESPONSE" or L_UIDROPDOWNMENU_MENU_VALUE:find("_RESPONSE$") then
+			text = L["Response"]..": ".."|cff"..(addon:RGBToHex(unpack(addon:GetResponse(lootTable[session].equipLoc, lootTable[session].candidates[candidateName].response).color))
+			or "ffffff")..(addon:GetResponse(lootTable[session].equipLoc, lootTable[session].candidates[candidateName].response).text or "").."|r"
 		else
-			addon:Debug("Unexpected category or dropdown menu value: "..tostring(category).." ,"..tostring(LIB_UIDROPDOWNMENU_MENU_VALUE))
+			addon:Debug("Unexpected category or dropdown menu value: "..tostring(category).." ,"..tostring(L_UIDROPDOWNMENU_MENU_VALUE))
 		end
 
 		return text
@@ -1338,10 +1409,10 @@ do
 		return (a and b) or (not a and not b)
 	end
 	-- Do reannounce (and request rolls)
-	-- whether request rolls, and who to reannounce is determined by the value of LIB_UIDROPDOWNMENU_MENU_VALUE
+	-- whether request rolls, and who to reannounce is determined by the value of L_UIDROPDOWNMENU_MENU_VALUE
 	--@param isThisItem true to reannounce on this item, false to reannounce on all items.
 	function RCVotingFrame.reannounceOrRequestRollButton(candidateName, isThisItem)
-		if type(LIB_UIDROPDOWNMENU_MENU_VALUE) ~= "string" then return end
+		if type(L_UIDROPDOWNMENU_MENU_VALUE) ~= "string" then return end
 		local namePred, sesPred
 		if isThisItem then
 			sesPred = function(k) return k==session or (not lootTable[k].awarded and addon:ItemIsItem(lootTable[k].link, lootTable[session].link)) end
@@ -1349,26 +1420,24 @@ do
 			sesPred = function(k) return not lootTable[k].awarded end
 		end
 
-		local isRoll = _G.LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") and true or false
+		local isRoll = _G.L_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") and true or false
 		local text = ""
 
 		local announceInChat = false
-		if LIB_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") then
+		if L_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") then
 			namePred = candidateName
-		elseif LIB_UIDROPDOWNMENU_MENU_VALUE:find("_GROUP$") then
+		elseif L_UIDROPDOWNMENU_MENU_VALUE:find("_GROUP$") then
 			announceInChat = true -- Announce in chat when announce to group
 			namePred = true
-		elseif LIB_UIDROPDOWNMENU_MENU_VALUE:find("_ROLL$") then
+		elseif L_UIDROPDOWNMENU_MENU_VALUE:find("_ROLL$") then
 			namePred = function(name) return lootTable[session].candidates[name].roll == lootTable[session].candidates[candidateName].roll end
-		elseif LIB_UIDROPDOWNMENU_MENU_VALUE:find("_RESPONSE$") then
-			namePred = function(name) return lootTable[session].candidates[name].response == lootTable[session].candidates[candidateName].response and
-			 								 booleanCompare(lootTable[session].candidates[name].isTier, lootTable[session].candidates[candidateName].isTier) and
-			 								 booleanCompare(lootTable[session].candidates[name].isRelic, lootTable[session].candidates[candidateName].isRelic) end
+		elseif L_UIDROPDOWNMENU_MENU_VALUE:find("_RESPONSE$") then
+			namePred = function(name) return lootTable[session].candidates[name].response == lootTable[session].candidates[candidateName].response end
 	 	else
-			addon:Debug("Unexpected dropdown menu value: "..tostring(LIB_UIDROPDOWNMENU_MENU_VALUE))
+			addon:Debug("Unexpected dropdown menu value: "..tostring(L_UIDROPDOWNMENU_MENU_VALUE))
 		end
 
-		local noAutopass = isThisItem and LIB_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") and true or false
+		local noAutopass = isThisItem and L_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") and true or false
 
 		if isThisItem then
 			RCVotingFrame:ReannounceOrRequestRoll(namePred, sesPred, isRoll, noAutopass, announceInChat)
@@ -1402,7 +1471,7 @@ do
 		Any value can be a function, which will be evaluated on creation. Functions gets candidateName and data (the data belonging to the candidate) as parameters.
 		The func field also gets candidateName and data as params, but gets delivered as a function to the dropdown.
 		There's three special fields to enable this kind of structure:
-			onValue :String 				- This entry will only be shown if LIB_UIDROPDOWNMENU_MENU_VALUE matches onValue. This enables nesting.
+			onValue :String 				- This entry will only be shown if L_UIDROPDOWNMENU_MENU_VALUE matches onValue. This enables nesting.
 			hidden  :boolean/function 	- The entry is only shown if this is false.
 			special :String 				- Handles a couple of special cases that wasn't too suitable for the orignal creating (#lazy)
 								 				- Cases: AWARD_FOR, CHANGE_RESPONSE, TIER_TOKENS
@@ -1482,8 +1551,8 @@ do
 		},
 		{ -- Level 3
 			{ -- 1 Header text of reannounce (and request rolls)
-				onValue = function() return type(_G.LIB_UIDROPDOWNMENU_MENU_VALUE)=="string" and
-					(LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") or LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REANNOUNCE"))
+				onValue = function() return type(_G.L_UIDROPDOWNMENU_MENU_VALUE)=="string" and
+					(L_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") or L_UIDROPDOWNMENU_MENU_VALUE:find("^REANNOUNCE"))
 				end,
 				text = function(candidateName) return RCVotingFrame.reannounceOrRequestRollText(candidateName) end,
 				notCheckable = true,
@@ -1493,11 +1562,11 @@ do
 				end,
 			},
 			{ -- 2 This item
-				onValue = function() return type(_G.LIB_UIDROPDOWNMENU_MENU_VALUE)=="string" and
-					(LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") or LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REANNOUNCE"))
+				onValue = function() return type(_G.L_UIDROPDOWNMENU_MENU_VALUE)=="string" and
+					(L_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") or L_UIDROPDOWNMENU_MENU_VALUE:find("^REANNOUNCE"))
 				end,
 				text = function()
-					if type(_G.LIB_UIDROPDOWNMENU_MENU_VALUE)=="string" and LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") then
+					if type(_G.L_UIDROPDOWNMENU_MENU_VALUE)=="string" and L_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") then
 						return L["This item"].." ("..REQUEST_ROLL..")"
 					else
 						return L["This item"]
@@ -1508,12 +1577,12 @@ do
 					return RCVotingFrame.reannounceOrRequestRollButton(candidateName, true)
 				end,
 			},{ -- 3 All unawarded items, only shown for "candidate" and "group" reannounce
-				onValue = function() return type(_G.LIB_UIDROPDOWNMENU_MENU_VALUE)=="string" and
-					(LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") or LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REANNOUNCE")) and
-					(LIB_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") or LIB_UIDROPDOWNMENU_MENU_VALUE:find("_GROUP$"))
+				onValue = function() return type(_G.L_UIDROPDOWNMENU_MENU_VALUE)=="string" and
+					(L_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") or L_UIDROPDOWNMENU_MENU_VALUE:find("^REANNOUNCE")) and
+					(L_UIDROPDOWNMENU_MENU_VALUE:find("_CANDIDATE$") or L_UIDROPDOWNMENU_MENU_VALUE:find("_GROUP$"))
 				end,
 				text = function()
-					if type(_G.LIB_UIDROPDOWNMENU_MENU_VALUE)=="string" and LIB_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") then
+					if type(_G.L_UIDROPDOWNMENU_MENU_VALUE)=="string" and L_UIDROPDOWNMENU_MENU_VALUE:find("^REQUESTROLL") then
 						return L["All unawarded items"].." ("..REQUEST_ROLL..")"
 					else
 						return L["All unawarded items"]
@@ -1533,16 +1602,16 @@ do
 		-- More levels can be added with tinsert(RCVotingFrame.rightClickEntries, {-- new level})
 	}
 	-- NOTE Take care of info[] values when inserting new buttons
-	local info = Lib_UIDropDownMenu_CreateInfo() -- Efficiency :)
+	local info = L_UIDropDownMenu_CreateInfo() -- Efficiency :)
 	function RCVotingFrame.RightClickMenu(menu, level)
 		if not addon.isMasterLooter then return end
 
 		local candidateName = menu.name
 		local data = lootTable[session].candidates[candidateName] -- Shorthand
 
-		local value = _G.LIB_UIDROPDOWNMENU_MENU_VALUE
+		local value = _G.L_UIDROPDOWNMENU_MENU_VALUE
 		for i, entry in ipairs(RCVotingFrame.rightClickEntries[level]) do
-			info = Lib_UIDropDownMenu_CreateInfo()
+			info = L_UIDropDownMenu_CreateInfo()
 			if not entry.special then
 				if not entry.onValue or entry.onValue == value or (type(entry.onValue)=="function" and entry.onValue(candidateName, data)) then
 					if (entry.hidden and type(entry.hidden) == "function" and not entry.hidden(candidateName, data)) or not entry.hidden then
@@ -1555,7 +1624,7 @@ do
 								info[name] = val
 							end
 						end
-						Lib_UIDropDownMenu_AddButton(info, level)
+						L_UIDropDownMenu_AddButton(info, level)
 					end
 				end
 			elseif value == "AWARD_FOR" and entry.special == value then
@@ -1566,31 +1635,31 @@ do
 					info.func = function()
 						LibDialog:Spawn("RCLOOTCOUNCIL_CONFIRM_AWARD", RCVotingFrame:GetAwardPopupData(session, candidateName, data, v))
 					end
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 			elseif value == "CHANGE_RESPONSE" and entry.special == value then
 				local v;
-				for i = 1, db.numButtons do
-					v = db.responses[i]
+				for i = 1, addon:GetNumButtons(lootTable[session].equipLoc) do
+					v = addon:GetResponse(lootTable[session].equipLoc, i)
 					info.text = v.text
 					info.colorCode = "|cff"..addon:RGBToHex(unpack(v.color))
 					info.notCheckable = true
 					info.func = function()
 							addon:SendCommand("group", "change_response", session, candidateName, i)
 					end
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 				-- Add pass button as well
-				info.text = db.responses.PASS.text
-				info.colorCode = "|cff"..addon:RGBToHex(unpack(db.responses.PASS.color))
+				info.text = db.responses.default.PASS.text
+				info.colorCode = "|cff"..addon:RGBToHex(unpack(db.responses.default.PASS.color))
 				info.notCheckable = true
 				info.func = function()
 						addon:SendCommand("group", "change_response", session, candidateName, "PASS")
 				end
-				Lib_UIDropDownMenu_AddButton(info, level)
-				info = Lib_UIDropDownMenu_CreateInfo()
+				L_UIDropDownMenu_AddButton(info, level)
+				info = L_UIDropDownMenu_CreateInfo()
 				if addon.debug then -- Add all possible responses when debugging
-					for k,v in pairs(db.responses) do
+					for k,v in pairs(db.responses.default) do
 						if type(k) ~= "number" and k ~= "tier" and k~= "relic" and k ~= "PASS" then
 							info.text = v.text
 							info.colorCode = "|cff"..addon:RGBToHex(unpack(v.color))
@@ -1598,18 +1667,18 @@ do
 							info.func = function()
 									addon:SendCommand("group", "change_response", session, candidateName, k)
 							end
-							Lib_UIDropDownMenu_AddButton(info, level)
+							L_UIDropDownMenu_AddButton(info, level)
 						end
 					end
 				end
-				info = Lib_UIDropDownMenu_CreateInfo()
+				info = L_UIDropDownMenu_CreateInfo()
 				-- Add the tier menu
 				if db.tierButtonsEnabled then
 					info.text = L["Tier Tokens ..."]
 					info.value = "TIER_TOKENS"
 					info.hasArrow = true
 					info.notCheckable = true
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 				-- And relics
 				if db.relicButtonsEnabled then
@@ -1617,7 +1686,7 @@ do
 					info.value = "RELICS"
 					info.hasArrow = true
 					info.notCheckable = true
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 
 			elseif value == "TIER_TOKENS" and entry.special == value then
@@ -1629,7 +1698,7 @@ do
 					info.func = function()
 							addon:SendCommand("group", "change_response", session, candidateName, k, true)
 					end
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 
 			elseif value == "RELICS" and entry.special == value then
@@ -1641,7 +1710,7 @@ do
 					info.func = function()
 							addon:SendCommand("group", "change_response", session, candidateName, k, false, true)
 					end
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 			end
 		end
@@ -1656,34 +1725,20 @@ do
 			end
 
 			-- Build the data table:
-			local data = {["STATUS"] = true, ["PASS"] = true, ["AUTOPASS"] = true, tier = {}, relic = {}}
+			local data = {["STATUS"] = true, ["PASS"] = true, ["AUTOPASS"] = true, default = {}}
 
-			local isTier, isRelic
-			-- If we're viewing a tier token and the ML have it enabled, we want to see it
-			if lootTable[session].token and addon.mldb.tierButtonsEnabled then
-				isTier = true
-				for i = 1, addon.mldb.tierNumButtons or db.tierNumButtons do
-					data.tier[i] = i
-				end
-			elseif lootTable[session].relic and addon.mldb.relicButtonsEnabled then
-				isRelic = true
-				for i = 1, addon.mldb.relicNumButtons or db.relicNumButtons do
-					data.relic[i] = i
-				end
-			else -- otherwise just do the normal buttons
-				for i = 1, addon.mldb.numButtons or db.numButtons do
-					data[i] = i
-				end
+			for i = 1, addon:GetNumButtons() do
+				data[i] = i
 			end
 
-			local info = Lib_UIDropDownMenu_CreateInfo()
+			local info = L_UIDropDownMenu_CreateInfo()
 			info.text = _G.GENERAL
 			info.isTitle = true
 			info.notCheckable = true
 			info.disabled = true
-			Lib_UIDropDownMenu_AddButton(info, level)
+			L_UIDropDownMenu_AddButton(info, level)
 
-			info = Lib_UIDropDownMenu_CreateInfo()
+			info = L_UIDropDownMenu_CreateInfo()
 			info.text = L["Candidates that can't use the item"]
 			info.func = function()
 				addon:Debug("Update Filter")
@@ -1691,52 +1746,26 @@ do
 				RCVotingFrame:Update(true)
 			end
 			info.checked = db.modules["RCVotingFrame"].filters.showPlayersCantUseTheItem
-			Lib_UIDropDownMenu_AddButton(info, level)
+			L_UIDropDownMenu_AddButton(info, level)
 
-			info = Lib_UIDropDownMenu_CreateInfo()
+			info = L_UIDropDownMenu_CreateInfo()
 			info.text = L["Responses"]
 			info.isTitle = true
 			info.notCheckable = true
 			info.disabled = true
-			Lib_UIDropDownMenu_AddButton(info, level)
+			L_UIDropDownMenu_AddButton(info, level)
 
-			info = Lib_UIDropDownMenu_CreateInfo()
-			if isTier then -- add tier buttons
-				for k in ipairs(data.tier) do
-					info.text = addon:GetResponseText(k, isTier)
-					info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(k, isTier))
-					info.func = function()
-						addon:Debug("Update tier Filter")
-						db.modules["RCVotingFrame"].filters.tier[k] = not db.modules["RCVotingFrame"].filters.tier[k]
-						RCVotingFrame:Update(true)
-					end
-					info.checked = db.modules["RCVotingFrame"].filters.tier[k]
-					Lib_UIDropDownMenu_AddButton(info, level)
+			info = L_UIDropDownMenu_CreateInfo()
+			for k in ipairs(data) do -- Make sure normal responses are on top
+				info.text = addon:GetResponse("", k).text
+				info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(nil,k))
+				info.func = function()
+					addon:Debug("Update Filter")
+					db.modules["RCVotingFrame"].filters[k] = not db.modules["RCVotingFrame"].filters[k]
+					RCVotingFrame:Update(true)
 				end
-			elseif isRelic then -- relic filters
-				for k in ipairs(data.relic) do
-					info.text = addon:GetResponseText(k, false, true)
-					info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(k, false, true))
-					info.func = function()
-						addon:Debug("Update relic Filter")
-						db.modules["RCVotingFrame"].filters.relic[k] = not db.modules["RCVotingFrame"].filters.relic[k]
-						RCVotingFrame:Update(true)
-					end
-					info.checked = db.modules["RCVotingFrame"].filters.relic[k]
-					Lib_UIDropDownMenu_AddButton(info, level)
-				end
-			else -- add normal buttons
-				for k in ipairs(data) do -- Make sure normal responses are on top
-					info.text = addon:GetResponseText(k)
-					info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(k))
-					info.func = function()
-						addon:Debug("Update Filter")
-						db.modules["RCVotingFrame"].filters[k] = not db.modules["RCVotingFrame"].filters[k]
-						RCVotingFrame:Update(true)
-					end
-					info.checked = db.modules["RCVotingFrame"].filters[k]
-					Lib_UIDropDownMenu_AddButton(info, level)
-				end
+				info.checked = db.modules["RCVotingFrame"].filters[k]
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 			for k in pairs(data) do -- A bit redundency, but it makes sure these "specials" comes last
 				if type(k) == "string" and k ~= "tier" and k ~= "relic" then
@@ -1744,8 +1773,8 @@ do
 						info.text = L["Status texts"]
 						info.colorCode = "|cffde34e2" -- purpleish
 					else
-						info.text = addon:GetResponseText(k)
-						info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(k))
+						info.text = addon:GetResponse("",k).text
+						info.colorCode = "|cff"..addon:RGBToHex(addon:GetResponseColor(nil,k))
 					end
 					info.func = function()
 						addon:Debug("Update Filter")
@@ -1753,26 +1782,26 @@ do
 						RCVotingFrame:Update(true)
 					end
 					info.checked = db.modules["RCVotingFrame"].filters[k]
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 			end
 
-			info = Lib_UIDropDownMenu_CreateInfo()
+			info = L_UIDropDownMenu_CreateInfo()
 			info.text = _G.RANK
 			info.isTitle = true
 			info.notCheckable = true
 			info.disabled = true
-			Lib_UIDropDownMenu_AddButton(info, level)
+			L_UIDropDownMenu_AddButton(info, level)
 
-			info = Lib_UIDropDownMenu_CreateInfo()
+			info = L_UIDropDownMenu_CreateInfo()
 			info.text = _G.RANK.."..."
 			info.notCheckable = true
 			info.hasArrow = true
 			info.value = "FILTER_RANK"
-			Lib_UIDropDownMenu_AddButton(info, level)
+			L_UIDropDownMenu_AddButton(info, level)
 		elseif level == 2 then
-			if LIB_UIDROPDOWNMENU_MENU_VALUE == "FILTER_RANK" then
-				info = Lib_UIDropDownMenu_CreateInfo()
+			if L_UIDROPDOWNMENU_MENU_VALUE == "FILTER_RANK" then
+				info = L_UIDropDownMenu_CreateInfo()
 				if IsInGuild() then
 					for k = 1, GuildControlGetNumRanks() do
 						info.text = GuildControlGetRankName(k)
@@ -1782,7 +1811,7 @@ do
 							RCVotingFrame:Update(true)
 						end
 						info.checked = db.modules["RCVotingFrame"].filters.ranks[k]
-						Lib_UIDropDownMenu_AddButton(info, level)
+						L_UIDropDownMenu_AddButton(info, level)
 					end
 				end
 
@@ -1793,7 +1822,7 @@ do
 					RCVotingFrame:Update(true)
 				end
 				info.checked = db.modules["RCVotingFrame"].filters.ranks.notInYourGuild
-				Lib_UIDropDownMenu_AddButton(info, level)
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 		end
 	end
@@ -1801,7 +1830,7 @@ do
 	function RCVotingFrame.EnchantersMenu(menu, level)
 		if level == 1 then
 			local added = false
-			info = Lib_UIDropDownMenu_CreateInfo()
+			info = L_UIDropDownMenu_CreateInfo()
 			if not db.disenchant then
 				return addon:Print(L["You haven't selected an award reason to use for disenchanting!"])
 			end
@@ -1820,14 +1849,14 @@ do
 						end
 					end
 					added = true
-					Lib_UIDropDownMenu_AddButton(info, level)
+					L_UIDropDownMenu_AddButton(info, level)
 				end
 			end
 			if not added then -- No enchanters available
 				info.text = L["No (dis)enchanters found"]
 				info.notCheckable = true
 				info.isTitle = true
-				Lib_UIDropDownMenu_AddButton(info, level)
+				L_UIDropDownMenu_AddButton(info, level)
 			end
 		end
 	end

@@ -9,14 +9,139 @@ if LibDebug then LibDebug() end
 local addon = LibStub("AceAddon-3.0"):GetAddon("RCLootCouncil")
 local L = LibStub("AceLocale-3.0"):GetLocale("RCLootCouncil")
 ------ Options ------
+local function DBGet(info)
+	return addon.db.profile[info[#info]]
+end
+
+local function DBSet(info, val)
+	addon.db.profile[info[#info]] = val
+	addon:ConfigTableChanged(info[#info])
+end
+
+local function roundColors(r,g,b,a)
+	return addon.round(r,2),addon.round(g,2),addon.round(b,2),addon.round(a,2)
+end
+
+local function createNewButtonSet(path, name, order)
+	-- Create the group
+	path[name] = {
+		order = order,
+		name = name == "AZERITE" and L["Azerite Armor"] or _G[name],
+		desc = "",
+		type = "group",
+		inline = true,
+		args = {
+			optionsDesc = {
+				order = 0,
+				name = format(L["opt_buttonsGroup_desc"], name == "AZERITE" and L["Azerite Armor"] or _G[name]) ,
+				type = "description",
+				width = "double",
+			},
+			remove = {
+				order = 1,
+				name = _G.REMOVE,
+				type = "execute",
+				func = function(info)
+					addon.db.profile.enabledButtons[info[#info - 1]] = nil
+					addon.db.profile.responses[info[#info - 1]] = nil
+					addon.db.profile.buttons[info[#info - 1]] = nil
+				end,
+			},
+			numButtons = {
+				order = 2,
+				name = L["Number of buttons"],
+				desc = L["number_of_buttons_desc"],
+				type = "range",
+				width = "full",
+				min = 1,
+				max = addon.db.profile.maxButtons,
+				step = 1,
+				get = function() return addon.db.profile.buttons[name].numButtons or 3 end,
+				set = function(_,v) addon.db.profile.buttons[name].numButtons = v end,
+			},
+		}
+	}
+	-- Create each entry
+	for i = 1, addon.db.profile.buttons[name].numButtons do
+		addon.db.profile.responses[name][i].sort = i -- Sort is static, just set it
+		path[name].args["button"..i] = {
+			order = i * 5 + 1,
+			name = L["Button"].." "..i,
+			desc = format(L["Set the text on button 'number'"], i),
+			type = "input",
+			get = function() return addon.db.profile.buttons[name][i].text end,
+			set = function(info, value) addon:ConfigTableChanged("buttons"); addon.db.profile.buttons[name][i].text = tostring(value) end,
+			hidden = function() return addon.db.profile.buttons[name].numButtons < i end,
+		}
+		path[name].args["picker"..i] = {
+			order = i * 5 + 2,
+			name = L["Response color"],
+			desc = L["response_color_desc"],
+			width = 0.8,
+			type = "color",
+			get = function() return unpack(addon.db.profile.responses[name][i].color or {1,1,1,1})	end,
+			set = function(info,r,g,b,a) addon:ConfigTableChanged("responses"); addon.db.profile.responses[name][i].color = {roundColors(r,g,b,a)} end,
+			hidden = function() return addon.db.profile.buttons[name].numButtons < i end,
+		}
+		path[name].args["text"..i] = {
+			order = i * 5 + 3,
+			name = L["Response"],
+			desc = format(L["Set the text for button i's response."], i),
+			type = "input",
+			get = function() return addon.db.profile.responses[name][i].text end,
+			set = function(info, value) addon:ConfigTableChanged("responses"); addon.db.profile.responses[name][i].text = tostring(value) end,
+			hidden = function() return addon.db.profile.buttons[name].numButtons < i end,
+		}
+		-- Move Up/Down buttons
+		path[name].args["move_up"..i] = {
+			order = i * 5 + 4,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up",
+			disabled = function(info) return i == 1 end, -- Disable the top button
+			func = function()
+				-- We basically need to switch two variables, this up, and the former up down.
+				-- Variables: addon.db.profile.responses[name] + addon.db.profile.buttons[name]
+				-- Temp store this data
+				local tempBtn = addon.db.profile.buttons[name][i]
+				local tempResponse = addon.db.profile.responses[name][i]
+				-- Move i - 1 down to i
+				addon.db.profile.buttons[name][i] = addon.db.profile.buttons[name][i - 1]
+				addon.db.profile.responses[name][i] = addon.db.profile.responses[name][i - 1]
+				-- And move the temp up
+				addon.db.profile.buttons[name][i - 1] = tempBtn
+				addon.db.profile.responses[name][i - 1] = tempResponse
+			end,
+		}
+		path[name].args["move_down"..i] = {
+			order = i * 5 + 4.1,
+			name = "", --L["Move Down"],
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up",
+			disabled = function() return i == addon.db.profile.buttons[name].numButtons end, -- Disable the bottom button
+			func = function()
+				local tempBtn = addon.db.profile.buttons[name][i]
+				local tempResponse = addon.db.profile.responses[name][i]
+				addon.db.profile.buttons[name][i] = addon.db.profile.buttons[name][i + 1]
+				addon.db.profile.responses[name][i] = addon.db.profile.responses[name][i + 1]
+				addon.db.profile.buttons[name][i + 1] = tempBtn
+				addon.db.profile.responses[name][i + 1] = tempResponse
+			end,
+		}
+	end
+end
+
+local selections = {}
 function addon:OptionsTable()
 	local db = self:Getdb()
 	local options = {
 		name = "RCLootCouncil",
 		type = "group",
 		handler = addon,
-		get = "DBGet",
-		set = "DBSet",
+		get = DBGet,
+		set = DBSet,
 		args = {
 			settings = {
 				order = 1,
@@ -207,7 +332,7 @@ function addon:OptionsTable()
 										name = L["Open the Loot History"],
 										desc = L["open_the_loot_history_desc"],
 										type = "execute",
-										func = function() self:CallModule("history");	InterfaceOptionsFrame:Hide();end,
+										func = function() self:CallModule("history");	_G.InterfaceOptionsFrame:Hide();end,
 									},
 									clearLootDB = {
 										order = 6,
@@ -216,6 +341,159 @@ function addon:OptionsTable()
 										type = "execute",
 										func = function() self.lootDB:ResetDB(); self:UpdateHistoryDB() end,
 										confirm = true,
+									},
+									spacer = {
+										order = 10,
+										type = "header",
+										name = "",
+									},
+									desc = {
+										order = 11,
+										type = "description",
+										name = L["Mass deletion of history entries."],
+									},
+									deleteName = {
+										order = 12,
+										name = _G.NAME,
+										desc = L["opt_deleteName_desc"],
+										type = "select",
+										width = "double",
+										values = function()
+											local nameData = self:GetActiveModule("history"):GetAllRegisteredCandidates()
+											local t = {}
+											for name, v in pairs(nameData) do
+												t[name] = "|cff"..self:RGBToHex(v.color.r,v.color.g,v.color.b)..v.name
+											end
+											return t
+										end,
+										get = function(info)
+											return selections[info[#info]] or ""
+										end,
+										set = function(info, val)
+											selections[info[#info]] = val
+										end,
+									},
+									deleteNameBtn = {
+										order = 13,
+										name = _G.DELETE,
+										type = "execute",
+										confirm = function(info)
+											if selections.deleteName then
+												return format(L["opt_deleteName_confirm"], selections.deleteName)
+											else
+												return false
+											end
+										end,
+										func = function(info)
+											if not selections.deleteName then
+												addon:Print(L["Invalid selection"])
+												return
+											end
+											self:GetActiveModule("history"):DeleteAllEntriesByName(selections.deleteName)
+											selections.deleteName = "" -- Barrow: Needs to be reset.
+										end,
+									},
+									deleteDate = {
+										order = 14,
+										name = L["Date"],
+										desc = L["opt_deleteDate_desc"],
+										type = "select",
+										width = "double",
+										values = {
+											[time() - 604800] = format(L["x days"], 7),
+											[time() - 1209600] = format(L["x days"], 14),
+											[time() -2592000] = format(L["x days"], 30),
+											[time() -5184000] = format(L["x days"], 60),
+											[time() -7776000] = format(L["x days"], 90),
+											[time() -10368000] = format(L["x days"], 120),
+											[time() -15552000] = format(L["x days"], 180),
+											[time() -31536000] = format(L["x days"], 365),
+										},
+										get = function(info)
+											return selections[info[#info]] or ""
+										end,
+										set = function(info, val)
+											selections[info[#info]] = val
+										end,
+									},
+									deleteDateBtn = {
+										order = 15,
+										name = _G.DELETE,
+										type = "execute",
+										confirm = function() return L["opt_deleteDate_confirm"] end,
+										func = function(info)
+											if not selections.deleteDate then
+												addon:Print(L["Invalid selection"])
+												return
+											end
+											self:GetActiveModule("history"):DeleteEntriesOlderThanEpoch(selections.deleteDate)
+											selections.deleteDate = "" -- Barrow: Needs to be reset.
+										end,
+									},
+									deletePatch = {
+										order = 16,
+										name = L["Patch"],
+										desc = L["opt_deletePatch_desc"],
+										type = "select",
+										width = "double",
+										values = {
+											[1534154400] = "Patch 8.0.1 (Battle for Azeroth)",
+											[1510225200] = "Patch 7.3.2 (Tier 21)",
+											[1497348000] = "Patch 7.2.5 (Tier 20)",
+											[1484650800] = "Patch 7.1.5 (Tier 19)",
+										},
+										get = function(info)
+											return selections[info[#info]] or ""
+										end,
+										set = function(info, val)
+											selections[info[#info]] = val
+										end,
+									},
+									deletePatchBtn = {
+										order = 17,
+										name = _G.DELETE,
+										type = "execute",
+										confirm = function() return L["opt_deletePatch_confirm"] end,
+										func = function(info)
+											if not selections.deletePatch then
+												addon:Print(L["Invalid selection"])
+												return
+											end
+											self:GetActiveModule("history"):DeleteEntriesOlderThanEpoch(selections.deletePatch)
+											selections.deletePatch = "" -- Barrow: Needs to be reset.
+										end,
+									},
+									deleteCustomDays = {
+										order = 18,
+										name = addon:CompleteFormatSimpleStringWithPluralRule(_G.DAYS, 2),
+										desc = L["opt_deleteDate_desc"],
+										type = "input",
+										width = "double",
+										validate = function(info, txt)
+											return type(tonumber(txt)) == "number" and true or "Input must be a number"
+										end,
+										get = function(info)
+											return selections[info[#info]] or ""
+										end,
+										set = function(info, txt)
+											selections[info[#info]] = txt
+										end,
+									},
+									deleteCustomDaysBtn = {
+										order = 19,
+										name = _G.DELETE,
+										type = "execute",
+										confirm = function() return L["opt_deleteDate_confirm"] end,
+										func = function(info)
+											if not selections.deleteCustomDays then
+												addon:Print(L["Invalid selection"])
+												return
+											end
+											-- Convert days into seconds
+											local days = selections.deleteCustomDays * 60 * 60 * 24
+											self:GetActiveModule("history"):DeleteEntriesOlderThanEpoch(days)
+											selections.deleteCustomDays = ""
+										end,
 									},
 								},
 							},
@@ -341,7 +619,7 @@ function addon:OptionsTable()
 										type = "select",
 										width = "double",
 										dialogControl = "LSM30_Border",
-										values = AceGUIWidgetLSMlists.border,
+										values = _G.AceGUIWidgetLSMlists.border,
 										get = function() return db.UI.default.border end,
 										set = function(info, key)
 											for k,v in pairs(db.UI) do
@@ -396,8 +674,8 @@ function addon:OptionsTable()
 				type = "group",
 				childGroups = "tab",
 				handler = addon,
-				get = "DBGet",
-				set = "DBSet",
+				get = DBGet,
+				set = DBSet,
 				--hidden = function() return not db.advancedOptions end,
 				args = {
 					desc = {
@@ -447,19 +725,6 @@ function addon:OptionsTable()
 												order = 2,
 												type = "header",
 												name = "",
-									},
-									leaderUsage = { -- Add leader options here since we can only make a single select dropdown
-										order = 3,
-										name = function() return self.db.profile.usage.ml and L["Always use when leader"] or L["Ask me when leader"] end,
-										desc = L["leaderUsage_desc"],
-										type = "toggle",
-										get = function() return self.db.profile.usage.leader or self.db.profile.usage.ask_leader end,
-										set = function(_, val)
-											self.db.profile.usage.leader, self.db.profile.usage.ask_leader = false, false -- Reset for zzzzz
-											if self.db.profile.usage.ml then self.db.profile.usage.leader = val end
-											if self.db.profile.usage.ask_ml then self.db.profile.usage.ask_leader = val end
-										end,
-										disabled = function() return self.db.profile.usage.never or self.db.profile.usage.pl or self.db.profile.usage.ask_pl end,
 									},
 									onlyUseInRaids = {
 										order = 4,
@@ -524,6 +789,18 @@ function addon:OptionsTable()
 										desc = L["autoloot_others_BoE_desc"],
 										type = "toggle",
 									},
+									printCompletedTrades = {
+										order = 9,
+										name = L["opt_printCompletedTrade_Name"],
+										desc = L["opt_printCompletedTrade_Desc"],
+										type = "toggle",
+									},
+									rejectTrade = {
+										order = 10,
+										name = L["opt_rejectTrade_Name"],
+										desc = L["opt_rejectTrade_Desc"],
+										type = "toggle",
+									}
 								},
 							},
 							voteOptions = {
@@ -838,6 +1115,7 @@ function addon:OptionsTable()
 											RAID = _G.CHAT_MSG_RAID	,
 											RAID_WARNING = _G.CHAT_MSG_RAID_WARNING,
 											group = _G.GROUP, -- must be converted
+											chat = L["Chat print"],
 										},
 										set = function(i,v) self.db.profile.announceChannel = v end,
 										hidden = function() return not self.db.profile.announceItems end,
@@ -912,12 +1190,67 @@ function addon:OptionsTable()
 										min = 1,
 										max = self.db.profile.maxButtons,
 										step = 1,
+										set = function(_,v) self.db.profile.buttons.default.numButtons = v end,
+										get = function() return self.db.profile.buttons.default.numButtons end,
 									},
 									-- Made further down
 								},
 							},
+							moreButtons = {
+								order = 2,
+								type = "group",
+								name = L["Additional Buttons"],
+								desc = "",
+								inline = true,
+								args = {
+									desc = {
+										order = 0,
+										type = "description",
+										name = L["opt_moreButtons_desc"],
+									},
+									selector = {
+										order = 1,
+										width = "double",
+										name = L["Slot"],
+										type = "select",
+										values = {
+											AZERITE = L["Azerite Armor"],
+											INVTYPE_HEAD = _G.INVTYPE_HEAD,
+											INVTYPE_NECK = _G.INVTYPE_NECK,
+											INVTYPE_SHOULDER = _G.INVTYPE_SHOULDER,
+											INVTYPE_CLOAK = _G.INVTYPE_CLOAK,
+											INVTYPE_CHEST = _G.INVTYPE_CHEST,
+											INVTYPE_WRIST = _G.INVTYPE_WRIST,
+											INVTYPE_HAND = _G.INVTYPE_HAND,
+											INVTYPE_WAIST =_G.INVTYPE_WAIST,
+											INVTYPE_LEGS = _G.INVTYPE_LEGS,
+											INVTYPE_FEET = _G.INVTYPE_FEET,
+											INVTYPE_FINGER = _G.INVTYPE_FINGER,
+											INVTYPE_TRINKET = _G.INVTYPE_TRINKET,
+											WEAPON = _G.WEAPON,
+										},
+										get = function () return selections.AddMoreButtons or "AZERITE" end,
+										set = function(i,v) selections.AddMoreButtons = v end,
+									},
+									addBtn = {
+										order = 2,
+										name = _G.ADD,
+										desc = L["opt_addButton_desc"],
+										type = "execute",
+										func = function()
+											db.enabledButtons[selections.AddMoreButtons or "AZERITE"] = true
+											-- Also setup default options
+											for i = 1, self.db.profile.maxButtons do
+												if not db.buttons[selections.AddMoreButtons or "AZERITE"][i] then
+													db.buttons[selections.AddMoreButtons or "AZERITE"][i] = {text = L["Button"]}
+												end
+											end
+										end,
+									}
+								},
+							},
 							timeoutOptions = {
-								order = 3,
+								order = 100,
 								type = "group",
 								name = L["Timeout"],
 								inline = true,
@@ -952,7 +1285,7 @@ function addon:OptionsTable()
 								},
 							},
 							moreInfoOptions = {
-								order = 4,
+								order = 101,
 								type = "group",
 								name = L["More Info"],
 								inline = true,
@@ -974,7 +1307,7 @@ function addon:OptionsTable()
 								},
 							},
 							responseFromChat = {
-								order = 5,
+								order = 102,
 								type = "group",
 								name = L["Responses from Chat"],
 								inline = true,
@@ -1003,8 +1336,12 @@ function addon:OptionsTable()
 								func = function()
 									self.db.profile.buttons = self.defaults.profile.buttons
 									self.db.profile.responses = self.defaults.profile.responses
-									self.db.profile.numButtons = self.defaults.profile.numButtons
 									self.db.profile.acceptWhispers = self.defaults.profile.acceptWhispers
+									self.db.profile.enabledButtons = {}
+									-- now remove *'s (UpdateDB() will re-register the defaults)
+									for k,v in pairs(self.db.profile.buttons) do if k == '*' then v = nil end end
+									for k,v in pairs(self.db.profile.responses) do if k == '*' then v = nil end end
+									self:UpdateDB()
 									self:ConfigTableChanged()
 								end,
 							},
@@ -1166,44 +1503,79 @@ function addon:OptionsTable()
 			},
 		},
 	}
-	local function roundColors(r,g,b,a)
-		return addon.round(r,2),addon.round(g,2),addon.round(b,2),addon.round(a,2)
-	end
-
 	-- #region Create options thats made with loops
+	-- NOTE Kind of redundant, but the createNewButtonSet() was created with groups in mind, not the default buttons
 	-- Buttons
 	local button, picker, text = {}, {}, {}
-	for i = 1, self.db.profile.maxButtons do
+	for i = 1, self.db.profile.buttons.default.numButtons do
 		button = {
-			order = i * 3 + 1,
+			order = i * 5 + 1,
 			name = L["Button"].." "..i,
 			desc = format(L["Set the text on button 'number'"], i),
 			type = "input",
-			get = function() return self.db.profile.buttons[i].text end,
-			set = function(info, value) addon:ConfigTableChanged("buttons"); self.db.profile.buttons[i].text = tostring(value) end,
-			hidden = function() return self.db.profile.numButtons < i end,
+			get = function() return self.db.profile.buttons.default[i].text end,
+			set = function(info, value) addon:ConfigTableChanged("buttons"); self.db.profile.buttons.default[i].text = tostring(value) end,
+			hidden = function() return self.db.profile.buttons.default.numButtons < i end,
 		}
 		options.args.mlSettings.args.buttonsTab.args.buttonOptions.args["button"..i] = button;
 		picker = {
-			order = i * 3 + 2,
+			order = i * 5 + 2,
 			name = L["Response color"],
 			desc = L["response_color_desc"],
+			width = 0.8,
 			type = "color",
-			get = function() return unpack(self.db.profile.responses[i].color)	end,
-			set = function(info,r,g,b,a) addon:ConfigTableChanged("responses"); self.db.profile.responses[i].color = {roundColors(r,g,b,a)} end,
-			hidden = function() return self.db.profile.numButtons < i end,
+			get = function() return unpack(self.db.profile.responses.default[i].color)	end,
+			set = function(info,r,g,b,a) addon:ConfigTableChanged("responses"); self.db.profile.responses.default[i].color = {roundColors(r,g,b,a)} end,
+			hidden = function() return self.db.profile.buttons.default.numButtons < i end,
 		}
 		options.args.mlSettings.args.buttonsTab.args.buttonOptions.args["picker"..i] = picker;
 		text = {
-			order = i * 3 + 3,
+			order = i * 5 + 3,
 			name = L["Response"],
 			desc = format(L["Set the text for button i's response."], i),
 			type = "input",
-			get = function() return self.db.profile.responses[i].text end,
-			set = function(info, value) addon:ConfigTableChanged("responses"); self.db.profile.responses[i].text = tostring(value) end,
-			hidden = function() return self.db.profile.numButtons < i end,
+			get = function() return self.db.profile.responses.default[i].text end,
+			set = function(info, value) addon:ConfigTableChanged("responses"); self.db.profile.responses.default[i].text = tostring(value) end,
+			hidden = function() return self.db.profile.buttons.default.numButtons < i end,
 		}
 		options.args.mlSettings.args.buttonsTab.args.buttonOptions.args["text"..i] = text;
+		options.args.mlSettings.args.buttonsTab.args.buttonOptions.args["move_up"..i] = {
+			order = i * 5 + 4,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up",
+			disabled = function() return i == 1 end, -- Disable the top button
+			func = function()
+				-- We basically need to switch two variables, this up, and the former up down.
+				-- Variables: addon.db.profile.responses[name] + addon.db.profile.buttons[name]
+				-- Temp store this data
+				local tempBtn = self.db.profile.buttons.default[i]
+				local tempResponse = self.db.profile.responses.default[i]
+				-- Move i - 1 down to i
+				self.db.profile.buttons.default[i] = self.db.profile.buttons.default[i - 1]
+				self.db.profile.responses.default[i] = self.db.profile.responses.default[i - 1]
+				-- And move the temp up
+				self.db.profile.buttons.default[i - 1] = tempBtn
+				self.db.profile.responses.default[i - 1] = tempResponse
+			end,
+		}
+		options.args.mlSettings.args.buttonsTab.args.buttonOptions.args["move_down"..i] = {
+			order = i * 5 + 4.1,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up",
+			disabled = function() return i == self.db.profile.buttons.default.numButtons end,
+			func = function()
+				local tempBtn = self.db.profile.buttons.default[i]
+				local tempResponse = self.db.profile.responses.default[i]
+				self.db.profile.buttons.default[i] = self.db.profile.buttons.default[i + 1]
+				self.db.profile.responses.default[i] = self.db.profile.responses.default[i + 1]
+				self.db.profile.buttons.default[i + 1] = tempBtn
+				self.db.profile.responses.default[i + 1] = tempResponse
+			end,
+		}
 
 		local whisperKeys = {
 			order = i + 3,
@@ -1211,15 +1583,15 @@ function addon:OptionsTable()
 			desc = format(L["Set the whisper keys for button i."], i),
 			type = "input",
 			width = "double",
-			get = function() return self.db.profile.buttons[i].whisperKey end,
-			set = function(k,v) self.db.profile.buttons[i].whisperKey = tostring(v) end,
-			hidden = function() return not (self.db.profile.acceptWhispers or self.db.profile.acceptRaidChat) or self.db.profile.numButtons < i end,
+			get = function() return self.db.profile.buttons.default[i].whisperKey end,
+			set = function(k,v) self.db.profile.buttons.default[i].whisperKey = tostring(v) end,
+			hidden = function() return not (self.db.profile.acceptWhispers or self.db.profile.acceptRaidChat) or self.db.profile.buttons.default.numButtons < i end,
 		}
 		options.args.mlSettings.args.buttonsTab.args.responseFromChat.args["whisperKey"..i] = whisperKeys;
 	end
 
 	-- Award Reasons
-	for i = 1, self.db.profile.maxAwardReasons do
+	for i = 1, self.db.profile.numAwardReasons do
 		options.args.mlSettings.args.awardsTab.args.awardReasons.args["reason"..i] = {
 			order = i+1,
 			name = L["Reason"]..i,
@@ -1246,7 +1618,7 @@ function addon:OptionsTable()
 			name = L["Log"],
 			desc = L["log_desc"],
 			type = "toggle",
-			width = "half",
+			width = 0.4,
 			get = function() return self.db.profile.awardReasons[i].log end,
 			set = function() self.db.profile.awardReasons[i].log = not self.db.profile.awardReasons[i].log end,
 			hidden = function() return self.db.profile.numAwardReasons < i end,
@@ -1256,6 +1628,7 @@ function addon:OptionsTable()
 			name = _G.ROLL_DISENCHANT,
 			desc = L["disenchant_desc"],
 			type = "toggle",
+			width = 0.8,
 			get = function() return self.db.profile.awardReasons[i].disenchant end,
 			set = function(info, val)
 				for k,v in ipairs(self.db.profile.awardReasons) do
@@ -1265,6 +1638,36 @@ function addon:OptionsTable()
 				self.db.profile.disenchant = val
 			end,
 			hidden = function() return self.db.profile.numAwardReasons < i end,
+		}
+		options.args.mlSettings.args.awardsTab.args.awardReasons.args["moveUp"..i] = {
+			order = i + 1.4,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up",
+			disabled = function() return i == 1 end, -- Disable the top button
+			func = function()
+				local tempResponse = self.db.profile.awardReasons[i]
+				-- Move i - 1 down to i
+				self.db.profile.awardReasons[i] = self.db.profile.awardReasons[i - 1]
+				-- And move the temp up
+				self.db.profile.awardReasons[i - 1] = tempResponse
+			end,
+		}
+		options.args.mlSettings.args.awardsTab.args.awardReasons.args["moveDown"..i] = {
+			order = i + 1.5,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up",
+			disabled = function() return i == self.db.profile.numAwardReasons end, -- Disable the bottom button
+			func = function()
+				local tempResponse = self.db.profile.awardReasons[i]
+				-- Move i - 1 down to i
+				self.db.profile.awardReasons[i] = self.db.profile.awardReasons[i + 1]
+				-- And move the temp up
+				self.db.profile.awardReasons[i + 1] = tempResponse
+			end,
 		}
 	end
 	-- Announce Channels
@@ -1281,10 +1684,11 @@ function addon:OptionsTable()
 				YELL = _G.CHAT_MSG_YELL,
 				PARTY = _G.CHAT_MSG_PARTY,
 				GUILD = _G.CHAT_MSG_GUILD,
-				OFFICER = _G.CHAT_MSG_RAID_WARNING,
+				OFFICER = _G.CHAT_MSG_OFFICER,
 				RAID = _G.CHAT_MSG_RAID,
 				RAID_WARNING = _G.CHAT_MSG_RAID_WARNING,
 				group = _G.GROUP,
+				chat = L["Chat print"],
 			},
 			set = function(j,v) self.db.profile.awardText[i].channel = v	end,
 			get = function() return self.db.profile.awardText[i].channel end,
@@ -1302,16 +1706,16 @@ function addon:OptionsTable()
 		}
 	end
 	-- #endregion
+	local i = 4
+	for group in pairs(db.enabledButtons) do
+		createNewButtonSet(options.args.mlSettings.args.buttonsTab.args, group, i)
+		i = i + 1
+	end
+
+	options.args.settings.args.profiles = LibStub("AceDBOptions-3.0"):GetOptionsTable(self.db) -- Add profile tab
+	addon.options = options
+	self:GetGuildOptions()
 	return options
-end
-
-function RCLootCouncil:DBGet(info)
-	return self.db.profile[info[#info]]
-end
-
-function RCLootCouncil:DBSet(info, val)
-	self.db.profile[info[#info]] = val
-	self:ConfigTableChanged(info[#info])
 end
 
 function addon:GetGuildOptions()

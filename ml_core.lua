@@ -53,7 +53,6 @@ function RCLootCouncilML:OnEnable()
 
 	self:RegisterComm("RCLootCouncil", 		"OnCommReceived")
 	self:RegisterEvent("CHAT_MSG_WHISPER",	"OnEvent")
-	self:RegisterEvent("CHAT_MSG_LOOT", 	"OnEvent")
 	self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnEvent")
 	self:RegisterBucketEvent("GROUP_ROSTER_UPDATE", 10, "UpdateGroup") -- Bursts in group creation, and we should have plenty of time to handle it
 	self:RegisterBucketMessage("RCConfigTableChanged", 5, "ConfigTableChanged") -- The messages can burst
@@ -66,7 +65,6 @@ function RCLootCouncilML:GetItemInfo(item)
 	local itemID = link and addon:GetItemIDFromLink(link)
 	if name then
 		return {
-			["name"]			= name, -- REVIEW This is really not needed as it's contained in itemLink. Remove next time we break backwards com
 			["link"]			= link,
 			["quality"]		= rarity,
 			["ilvl"]			= addon:GetTokenIlvl(link) or ilvl, -- if the item is a token, ilvl is the min ilvl of the item it creates.
@@ -74,8 +72,8 @@ function RCLootCouncilML:GetItemInfo(item)
 			["subType"]		= subType,
 			["texture"]		= texture,
 			["boe"]			= bindType == LE_ITEM_BIND_ON_EQUIP,
-			["relic"]		= itemID and IsArtifactRelicItem(itemID) and select(3, C_ArtifactUI.GetRelicInfoByItemID(itemID)),
-			["token"]		= itemID and RCTokenTable[itemID],
+			--["relic"]		= itemID and IsArtifactRelicItem(itemID) and select(3, C_ArtifactUI.GetRelicInfoByItemID(itemID)),
+			--["token"]		= itemID and RCTokenTable[itemID],
 			["typeID"]		= typeID,
 			["subTypeID"]	= subTypeID,
 			["classes"]		= addon:GetItemClassesAllowedFlag(link)
@@ -156,8 +154,8 @@ function RCLootCouncilML:RemoveItem(session)
 	tremove(self.lootTable, session)
 end
 
-function RCLootCouncilML:AddCandidate(name, class, role, rank, enchant, lvl, specID)
-	addon:DebugLog("ML:AddCandidate",name, class, role, rank, enchant, lvl, specID)
+function RCLootCouncilML:AddCandidate(name, class, role, rank, enchant, lvl, ilvl, specID)
+	addon:DebugLog("ML:AddCandidate",name, class, role, rank, enchant, lvl, ilvl, specID)
 	self.candidates[name] = {
 		["class"]		= class,
 		["role"]			= role,
@@ -332,7 +330,7 @@ function RCLootCouncilML:PrintItemsInBags()
 	end
 	addon:Print(L["Following items were registered in the award later list:"])
 	for i, v in ipairs(Items) do
-		addon:Print(i..". "..v.link, format(GUILD_BANK_LOG_TIME, SecondsToTime(time(date("!*t"))-v.addedTime, true)) )
+		addon:Print(i..". "..v.link, format(GUILD_BANK_LOG_TIME, SecondsToTime(time(date("!*t"))-v.time_added, true)) )
 		-- GUILD_BANK_LOG_TIME == "( %s ago )", although the constant name does not make sense here, this constant expresses we intend to do.
 		-- SecondsToTime is defined in SharedXML/util.lua
 	end
@@ -446,36 +444,49 @@ end
 function RCLootCouncilML:UpdateMLdb()
 	-- The db has changed, so update the mldb and send the changes
 	addon:Debug("UpdateMLdb")
-	addon.mldb = self:BuildMLdb()
+	addon:OnMLDBReceived(self:BuildMLdb())
 	addon:SendCommand("group", "MLdb", addon.mldb)
 end
 
 function RCLootCouncilML:BuildMLdb()
-	-- Extract changes to normal responses/buttons
+	-- Extract changes to responses/buttons
 	local changedResponses = {};
-	for i = 1, db.numButtons do
-		if db.responses[i].text ~= addon.defaults.profile.responses[i].text or unpack(db.responses[i].color) ~= unpack(addon.defaults.profile.responses[i].color) then
-			changedResponses[i] = db.responses[i]
+	for type, responses in pairs(db.responses) do
+		for i in ipairs(responses) do
+			if i > db.buttons[type].numButtons then break end
+			if not addon.defaults.profile.responses[type]
+			or db.responses[type][i].text ~= addon.defaults.profile.responses[type][i].text
+			or unpack(db.responses[type][i].color) ~= unpack(addon.defaults.profile.responses[type][i].color) then
+				if not changedResponses[type] then changedResponses[type] = {} end
+				changedResponses[type][i] = db.responses[type][i]
+			end
 		end
 	end
 	local changedButtons = {};
-	for i = 1, db.numButtons do
-		if db.buttons[i].text ~= addon.defaults.profile.buttons[i].text then
-			changedButtons[i] = {text = db.buttons[i].text}
+	for type, buttons in pairs(db.buttons) do
+		for i in ipairs(buttons) do
+			if i > db.buttons[type].numButtons then break end
+			if not addon.defaults.profile.buttons[type]
+			or db.buttons[type][i].text ~= addon.defaults.profile.buttons[type][i].text then
+				if not changedButtons[type] then changedButtons[type] = {} end
+				changedButtons[type][i] = {text = db.buttons[type][i].text}
+			end
 		end
 	end
+	if changedButtons.default then changedButtons.default.numButtons = db.buttons.default.numButtons end
 
 	local MLdb = {
 		selfVote			= db.selfVote or nil,
 		multiVote		= db.multiVote or nil,
 		anonymousVoting= db.anonymousVoting or nil,
 		allowNotes		= db.allowNotes or nil,
-		numButtons		= db.numButtons,
+		numButtons		= db.buttons.default.numButtons, -- v2.9: Kept as to not break backwards compability on mldb comms. Not used any more
 		hideVotes		= db.hideVotes or nil,
 		observe			= db.observe or nil,
 		buttons			= changedButtons,	-- REVIEW I'm not sure if it's feasible to nil out empty tables
 		responses		= changedResponses,
 		timeout			= db.timeout,
+		rejectTrade 	= db.rejectTrade or nil
 	}
 
 	addon:SendMessage("RCMLBuildMLdb", MLdb)
@@ -570,10 +581,25 @@ function RCLootCouncilML:OnCommReceived(prefix, serializedMsg, distri, sender)
 
 			elseif command == "tradable" then -- Raid members send the info of the tradable item he looted.
 				self:HandleReceivedTradeable(unpack(data), sender)
+
+			elseif command == "trade_complete" then
+				self:OnTradeComplete(unpack(data))
+			elseif command == "trade_WrongWinner" then
+				local link, recipient, trader, winner = unpack(data)
+				addon:Print(format(L["trade_wrongwinner_message"], addon.Ambiguate(trader), link, addon.Ambiguate(recipient), addon.Ambiguate(winner)))
+
+			elseif command == "not_tradeable" or command == "rejected_trade" then
+				self:HandleNonTradeable(unpack(data), addon:UnitName(sender), command)
 			end
 		else
 			addon:Debug("Error in deserializing ML comm: ", command)
 		end
+	end
+end
+
+function RCLootCouncilML:OnTradeComplete(link, recipient, trader)
+	if db.printCompletedTrades then
+		addon:Print(format(L["trade_complete_message"], addon.Ambiguate(trader), link, addon.Ambiguate(recipient)))
 	end
 end
 
@@ -589,8 +615,8 @@ function RCLootCouncilML:HandleReceivedTradeable (item, sender)
 	-- For ML loot method, ourselve must be excluded because it should be handled in self:LootOpen()
 	if not addon:UnitIsUnit(sender, "player") or addon.lootMethod ~= "master" then
 		local quality = select(3, GetItemInfo(item))
-
-		if	(db.autolootOthersBoE and addon:IsItemBoE(item)) or -- BoE
+		local boe = addon:IsItemBoE(item)
+		if	(not boe or (db.autolootOthersBoE and boe)) and -- BoE
 		 	(IsEquippableItem(item) or db.autolootEverything) and -- Safetee: I don't want to check db.autoloot here, because this is actually not a loot.
 			not self:IsItemIgnored(item) and -- Item mustn't be ignored
 			(quality and quality >= (GetLootThreshold() or 1))  then
@@ -602,6 +628,18 @@ function RCLootCouncilML:HandleReceivedTradeable (item, sender)
 				end
 		end
 	end
+end
+
+function RCLootCouncilML:HandleNonTradeable(link, owner, reason)
+	local responseID
+	if reason == "not_tradeable" then
+		responseID = "PL"
+	elseif reason == "rejected_trade" then
+		responseID = "PL_REJECT"
+	else
+		return addon:Debug("Non handled reason in ML:HandleNonTradeable()",link,owner,reason)
+	end
+	self:TrackAndLogLoot(owner, link, responseID, addon.bossName)
 end
 
 function RCLootCouncilML:OnEvent(event, ...)
@@ -650,6 +688,7 @@ function RCLootCouncilML:OnLootSlotCleared(slot, link)
 	end
 end
 
+-- DEPRECATED
 function RCLootCouncilML:LootOpened()
 	local sessionframe = addon:GetActiveModule("sessionframe")
 	if addon.isMasterLooter and GetNumLootItems() > 0 then
@@ -965,7 +1004,7 @@ local function registerAndAnnounceAward(session, winner, response, reason)
 	self:AnnounceAward(winner, self.lootTable[session].link,
 			reason and reason.text or response, addon:GetActiveModule("votingframe"):GetCandidateData(session, winner, "roll"), session, changeAward)
 	if self:HasAllItemsBeenAwarded() then
-		addon:Print(L["All items has been awarded and  the loot session concluded"])
+		addon:Print(L["All items have been awarded and the loot session concluded"])
 		self:ScheduleTimer("EndSession", 1)  -- Delay a bit to ensure callback is handled before session ends.
 	end
 	return true
@@ -1258,7 +1297,7 @@ function RCLootCouncilML:TrackAndLogLoot(name, item, responseID, boss, votes, it
 	if reason and not reason.log then return end -- Reason says don't log
 	if not (db.sendHistory or db.enableHistory) then return end -- No reason to do stuff when we won't use it
 	if addon.testMode and not addon.nnp then return end -- We shouldn't track testing awards.
-	local _, link = GetItemInfo(item)
+	local _, link,_,_,_,_,_,_,equipLoc = GetItemInfo(item)
 	local i1,i2
 	if itemReplaced1 then i1 = select(2, GetItemInfo(itemReplaced1)) end
 	if itemReplaced2 then i2 = select(2, GetItemInfo(itemReplaced2)) end
@@ -1273,9 +1312,9 @@ function RCLootCouncilML:TrackAndLogLoot(name, item, responseID, boss, votes, it
 	history_table["votes"] 			= votes
 	history_table["itemReplaced1"]= i1
 	history_table["itemReplaced2"]= i2
-	history_table["response"] 		= reason and reason.text or addon:GetResponseText(responseID, tokenRoll, relicRoll)
+	history_table["response"] 		= reason and reason.text or addon:GetResponse(equipLoc,responseID).text
 	history_table["responseID"] 	= responseID or reason.sort - 400 															-- Changed in v2.0 (reason responseID was 0 pre v2.0)
-	history_table["color"]			= reason and reason.color or {addon:GetResponseColor(responseID, tokenRoll, relicRoll)}	-- New in v2.0
+	history_table["color"]			= reason and reason.color or addon:GetResponse(equipLoc, responseID).color	-- New in v2.0
 	history_table["class"]			= self.candidates[name].class																-- New in v2.0
 	history_table["isAwardReason"]= reason and true or false																	-- New in v2.0
 	history_table["difficultyID"]	= difficultyID																					-- New in v2.3+
@@ -1345,7 +1384,7 @@ function RCLootCouncilML:Test(items)
 	addon:SendCommand("group", "candidates", self.candidates)
 	-- Add the items
 	for session, iName in ipairs(items) do
-		self:AddItem(iName, false, false, addon.playerName)
+		self:AddItem(iName)
 	end
 	if db.autoStart then
 		addon:Print(L["Autostart isn't supported when testing"])
@@ -1415,7 +1454,7 @@ function RCLootCouncilML:GetItemsFromMessage(msg, sender, retryCount)
 				gsub(db.relicButtons[i]["whisperKey"], '[%w]+', function(x) tinsert(whisperKeys, {key = x, num = i}) end)
 			end
 		else
-			for i = 1, db.numButtons do --go through all the button
+			for i = 1, db.buttons.default.numButtons do --go through all the button
 				gsub(db.buttons[i]["whisperKey"], '[%w]+', function(x) tinsert(whisperKeys, {key = x, num = i}) end) -- extract the whisperKeys to a table
 			end
 		end
@@ -1471,14 +1510,14 @@ function RCLootCouncilML:GetItemsFromMessage(msg, sender, retryCount)
 	-- Let people know we've done stuff
 	addon:Print(format(L["Item received and added from 'player'"], addon.Ambiguate(sender)))
 	SendChatMessage("[RCLootCouncil]: "..format(L["Response to 'item' acknowledged as 'response'"],
-		addon:GetItemTextWithCount(link, count), addon:GetResponseText(response, isTier)), "WHISPER", nil, sender)
+		addon:GetItemTextWithCount(link, count), addon:GetResponse(self.lootTable[ses].equipLoc, response).text), "WHISPER", nil, sender)
 end
 
 function RCLootCouncilML:SendWhisperHelp(target)
 	addon:DebugLog("SendWhisperHelp", target)
 	local msg
 	SendChatMessage(L["whisper_guide"], "WHISPER", nil, target)
-	for i = 1, db.numButtons do
+	for i = 1, db.buttons.default.numButtons do
 		msg = "[RCLootCouncil]: "..db.buttons[i]["text"]..":  " -- i.e. MainSpec/Need:
 		msg = msg..""..db.buttons[i]["whisperKey"].."." -- need, mainspec, etc
 		SendChatMessage(msg, "WHISPER", nil, target)
@@ -1513,7 +1552,7 @@ end
 -- Argument to callback: awarded, session, winner, status, data, ...
 -- If you want to add a button to the rightclick menu which does award, use this function, the callback function is your custom function to do stuff after award is done.
 function RCLootCouncilML.AwardPopupOnClickYes(frame, data, callback, ...)
-	RCLootCouncilML:Award(data.session, data.winner, data.responseID and addon:GetResponseText(data.responseID, data.isTierRoll, data.isRelicRoll), data.reason,
+	RCLootCouncilML:Award(data.session, data.winner, data.responseID and addon:GetResponse(data.equipLoc, data.responseID).text, data.reason,
 		RCLootCouncilML.AwardPopupOnClickYesCallback, data, callback, ...)
 
 	-- We need to delay the test mode disabling so comms have a chance to be send first!
