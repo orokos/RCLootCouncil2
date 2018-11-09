@@ -142,6 +142,12 @@ TestSizesAndTime = {
    TestLooted= function (args)
       DoPerformanceTests(data.looted)
    end,
+   TestLootAck1 = function (args)
+      DoPerformanceTests(data.loot_ack1)
+   end,
+   TestLootAck2 = function (args)
+      DoPerformanceTests(data.loot_ack2)
+   end,
 }
 
 TestHistoryBig = function()
@@ -166,12 +172,15 @@ data = {
    playerinfo_1 = "^1^SplayerInfo^T^N1^SBuffysummers-Kazzak^N2^SDEMONHUNTER^N3^SDAMAGER^N4^SAlt^N6^N0^N7^N364.625^N8^N577^t^^",
 
    tradeable_1 = "^1^Stradable^T^N1^S|cffa335ee|Hitem:159333::::::::120:259::16:3:5010:1542:4786:::|h[Cincture~`of~`the~`Azerite~`Arsenal]|h|r^t^^",
-   tradeable_2 = "^1^Stradable^T^N1^S|cffa335ee|Hitem:159293::::::::120:250::16:3:5010:1542:4786:::|h[Turncoat's~`Cape]|h|r^t^^",
+   tradeable_2 = "^1^Stradable^T^N1^Sitem:159293::::::::120:250::16:3:5010:1542:4786^t^^",
    tradeable_3 = "^1^Snot_tradeable^T^N1^S|cffa335ee|Hitem:158348::::::::120:258::16:3:5005:1527:4786:::|h[Wraps~`of~`Everliving~`Fealty]|h|r^N2^S282737^t^^",
 
    loottable_1 = "^1^SlootTable^T^N1^T^N1^T^SequipLoc^SINVTYPE_WAIST^Silvl^N395^Slink^S|cffa335ee|Hitem:160734::::::::120:250::6:3:4800:1517:4783:::|h[Cord~`of~`Animated~`Contagion]|h|r^Sowner^SRaifu-Kazzak^SsubType^SCloth^Stexture^N2059662^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^t^t^^",
-   loottable_2 = "^1^SlootTable^T^N1^T^N1^T^SequipLoc^SINVTYPE_HAND^Silvl^N370^Slink^S|cffa335ee|Hitem:160618::::::::120:267::5:3:4799:1492:4786:::|h[Gloves~`of~`Descending~`Madness]|h|r^Sowner^STheørydh-Kazzak^SsubType^SLeather^Stexture^N2021684^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^t^t^^",
-   loottable_3 = "^1^SlootTable^T^N1^T^N1^T^SequipLoc^SINVTYPE_HAND^Silvl^N370^Slink^S|cffa335ee|Hitem:160626::::::::120:267::5:3:4799:1492:4786:::|h[Gloves~`of~`Involuntary~`Amputation]|h|r^Sowner^SAnasara-Kazzak^SsubType^SMail^Stexture^N1991835^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^t^t^^",
+   loottable_2 = "^1^SlootTable^T^N1^T^N1^T^SequipLoc^SINVTYPE_WAIST^Silvl^N370^Slink^S|cffa335ee|Hitem:160633::::::::120:104::5:4:4799:1808:1492:4786:::|h[Titanspark~`Energy~`Girdle]|h|r^Sowner^SSwiftshandee-Ravencrest^SsubType^SMail^Stexture^N1991830^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N2^T^SequipLoc^SINVTYPE_FINGER^Silvl^N370^Slink^S|cffa335ee|Hitem:160647::::::::120:104::5:3:4799:1492:4786:::|h[Ring~`of~`the~`Infinite~`Void]|h|r^Sowner^SFrostitutê-Ravencrest^SsubType^SMiscellaneous^Stexture^N2000824^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N3^T^SequipLoc^SINVTYPE_WEAPON^Silvl^N370^Slink^S|cffa335ee|Hitem:160687::::::::120:104::5:4:4799:42:1492:4786:::|h[Containment~`Analysis~`Baton]|h|r^Sowner^SPotdisc-Ravencrest^SsubType^SOne-Handed~`Maces^Stexture^N2055069^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^t^t^^",
+   loottable_3 = "^1^SlootTable^T^N1^T^N1^T^SequipLoc^SINVTYPE_SHOULDER^Silvl^N370^Slink^S|cffa335ee|Hitem:160641::::::::120:104::5:3:4823:1492:4786:::|h[Chitinspine~`Pauldrons]|h|r^Sowner^STsompanós-Ravencrest^SsubType^SPlate^Stexture^N2054631^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N2^T^SequipLoc^SINVTYPE_CHEST^Silvl^N370^Slink^S|cffa335ee|Hitem:160725::::::::120:104::5:3:4823:1492:4786:::|h[C'thraxxi~`General's~`Hauberk]|h|r^Sowner^SEnkuu-Ravencrest^SsubType^SMail^Stexture^N1991834^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N3^T^SequipLoc^SINVTYPE_FINGER^Silvl^N370^Slink^S|cffa335ee|Hitem:160646::::::::120:104::5:3:4799:1492:4786:::|h[Band~`of~`Certain~`Annihilation]|h|r^Sowner^SKossey-Ravencrest^SsubType^SMiscellaneous^Stexture^N2000818^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N4^T^SequipLoc^SINVTYPE_FINGER^Silvl^N370^Slink^S|cffa335ee|Hitem:160646::::::::120:104::5:3:4799:1492:4786:::|h[Band~`of~`Certain~`Annihilation]|h|r^Sowner^SRageasaurus-Ravencrest^SsubType^SMiscellaneous^Stexture^N2000818^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N5^T^SequipLoc^SINVTYPE_FINGER^Silvl^N370^Slink^S|cffa335ee|Hitem:160646::::::::120:104::5:3:4799:1492:4786:::|h[Band~`of~`Certain~`Annihilation]|h|r^Sowner^SMangochops-Ravencrest^SsubType^SMiscellaneous^Stexture^N2000818^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^N6^T^SequipLoc^SINVTYPE_TRINKET^Silvl^N370^Slink^S|cffa335ee|Hitem:160656::::::::120:104::5:3:4799:1492:4786:::|h[Twitching~`Tentacle~`of~`Xalzaix]|h|r^Sowner^SFrostitutê-Ravencrest^SsubType^SMiscellaneous^Stexture^N254105^SisSent^b^Sawarded^b^Sclasses^N4294967295^Sboe^b^Squality^N4^t^t^t^^",
+
+   loot_ack1 = "^1^SlootAck^T^N1^SPotdisc-Ravencrest^N2^N256^N3^N369.1875^N4^T^Sresponse^T^N2^B^N3^B^N4^B^t^Sdiff^T^N1^N-5^N2^N0^N3^N-10^N4^N-5^t^Sgear1^T^N1^Sitem:159294::::::::120:256::16:3:5008:1547:4783^N2^Sitem:159241::::::::120:256::35:3:5055:1542:4786^N3^Sitem:160617::::::::120:256::5:3:4799:1502:4783^N4^Sitem:159262::::::::120:256::16:3:5006:1547:4784^t^Sgear2^T^t^t^t^^",
+   loot_ack2 = "^1^SlootAck^T^N1^SAngri-Ravencrest^N2^N253^N3^N369.0625^N4^T^Sresponse^T^N1^B^N2^B^t^Sdiff^T^N1^N0^N2^N0^N3^N0^t^Sgear1^T^N1^Sitem:158046::::::::120:253::28:3:1562:5138:5383^N2^Sitem:158046::::::::120:253::28:3:1562:5138:5383^N3^Sitem:160645:5939:::::::120:253::5:3:4799:1492:4786^t^Sgear2^T^N3^Sitem:160647:5939:::::::120:253::5:3:4799:1492:4786^t^t^t^^",
 
    rolls_1 = "^1^Srolls^T^N1^N1^N2^T^SKavhi-Kazzak^N65^SKrànk-Kazzak^N45^SLagg-Quel'Thalas^N68^SCiumegu-Kazzak^N100^SNylia-Kazzak^N64^SIndraka-Kazzak^N43^SKaevh-Kazzak^N13^SAnasara-Kazzak^N80^SHakuei-Kazzak^N14^SStalla-Kazzak^N99^SMestertyv-Kazzak^N74^SYimyims-Kazzak^N53^SChargingdead-Kazzak^N48^SAmphy-Kazzak^N16^STheørydh-Kazzak^N6^SVökar-Kazzak^N21^SPathripss-Kazzak^N33^SValianara-Kazzak^N47^SLactia-Kazzak^N31^SSoapea-Kazzak^N34^t^t^^",
 
