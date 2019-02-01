@@ -50,7 +50,7 @@ local name_proto = {
 
 
 local function NewName(name, guid)
-   addon:Debug("Creating Name:", name, guid)
+   addon.Log("PlayerNames", "Creating Name:", name, guid)
    local Name = setmetatable(
       {
          name = name or "",

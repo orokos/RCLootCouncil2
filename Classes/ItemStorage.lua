@@ -42,30 +42,30 @@ function addon:InitItemStorage()-- Extract items from our SV. Could be more eleg
    for k, v in ipairs(db.itemStorage) do
       Item = Storage:StoreItem(v.link, v.type, "restored", v)
       if not Item.exists then -- Item probably no longer exists?
-         addon:Debug("Error - ItemStorage, couldn't add db item:", v.link)
+         addon.Log.e("ItemStorage", "Couldn't add db item:", v.link)
          local key = FindInTableIf(db.itemStorage, function(d) return addon:ItemIsItem(v.link, d.link) end)
          if key then
             tremove(db.itemStorage, key)
          else
-            addon:Debug("Error - Unable to remove item from db?!")
+            addon.Log.e("ItemStorage", "Unable to remove item from db?!")
          end
       end
    end
 end
 
 local function findItemInBags(link)
-   addon:DebugLog("Storage: searching for item:",link)
+   addon.Log("ItemStorage", "Searching for item:",link)
    if link and link ~= "" then
       for container=0, _G.NUM_BAG_SLOTS do
    		for slot=1, GetContainerNumSlots(container) or 0 do
             if addon:ItemIsItem(link, GetContainerItemLink(container, slot)) then
-               addon:DebugLog("Found item at",container, slot)
+               addon:Log("Found item at",container, slot)
                return container, slot
             end
          end
       end
    end
-   addon:DebugLog("Error - Couldn't find item")
+   addon.Log.e("ItemStorage", "Couldn't find item")
 end
 
 local function newItem(link, type, time_remaining)
@@ -91,7 +91,7 @@ end
 function Storage:StoreItem(item, typex, ...)
    if not typex then typex = "other" end
    if not self.AcceptedTypes[typex] then error("Type: " .. tostring(typex) .. " is not accepted. Accepted types are: " .. table.concat(self.AcceptedTypes, ", "),2) end
-   addon:Debug("Storage:StoreItem",item,typex,...)
+   addon:Log("ItemStorage", "StoreItem",item,typex,...)
    local c,s = findItemInBags(item)
    local Item
    if not (c and s) then
@@ -118,7 +118,7 @@ end
 -- @param item Either an itemlink (@see GetItemInfo) or the Item object returned by :StoreItem
 -- @return True if successful
 function Storage:RemoveItem(item)
-   addon:Debug("Storage:RemoveItem", item)
+   addon.Log("ItemStorage", "RemoveItem", item)
    if type(item) == "table" then -- Our Item object
       if StoredItems[item] and db.itemStorage[item] then
          tDeleteItem(StoredItems, item)
@@ -135,7 +135,7 @@ function Storage:RemoveItem(item)
          return true
       end
    end
-   addon:Debug("Error - Couldn't remove item")
+   addon.Log.e("ItemStorage", "Couldn't remove item:", item)
 end
 
 --- Removes all items of a specific type

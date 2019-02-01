@@ -96,10 +96,10 @@ function private:ReceiveComm(prefix, encodedMsg, distri, sender)
    -- Unpack message
    local decoded = ld:DecodeForWoWAddonChannel(encodedMsg)
    local decompressed = ld:DecompressDeflate(decoded)
-   addon:DebugLog("<Comm>:", decompressed, distri, sender)
+   addon.Log.f("<Comm>", decompressed, distri, sender)
    local test, command, data = addon:Deserialize(decompressed)
    if not test then
-      return addon:DebugLog("<Error>:", "Deserialization failed with:", decompressed)
+      return addon.Log.e("<Comm>", "Deserialization failed with:", decompressed)
    end
    if command == "xrealm" then
       local target = tremove(data, 1)
