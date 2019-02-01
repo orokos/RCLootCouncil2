@@ -1,21 +1,18 @@
 local lu = require("luaunit")
 
-dofile "../wow_api.lua"
-dofile "../../Libs/LibStub/LibStub.lua"
-dofile "../../Libs/AceAddon-3.0/AceAddon-3.0.lua"
+if not RCLootCouncil then dofile "../Init.lua" end
 
-local rc = LibStub("AceAddon-3.0"):NewAddon("RCLootCouncil")
+local rc = RCLootCouncil
 local private = {}
 local debug = false
+local db = rc.db
 
-local db = {
-   itemStorage = {
-      {
-         link = "|cffa335ee|Hitem:160623::::::::120:577::5:3:4823:1492:4786:::|h[Hood of Pestilent Ichor]|h|r", -- private.items[1]
-         type = "to_trade",
-         time_added = 1234,
-      }
-   },
+rc.db.itemStorage = {
+   {
+      link = "|cffa335ee|Hitem:160623::::::::120:577::5:3:4823:1492:4786:::|h[Hood of Pestilent Ichor]|h|r", -- private.items[1]
+      type = "to_trade",
+      time_added = 1234,
+   }
 }
 
 -- Init some globals used
@@ -29,19 +26,13 @@ end
 
 -- Init some RCLootCouncil mockups
 function rc:Getdb ()
-   return db
+   return self.db
 end
 function rc:ItemIsItem(item1, item2)
 	if type(item1) ~= "string" or type(item2) ~= "string" then return item1 == item2 end
 	local pattern = "|Hitem:(%d*):(%d*):(%d*):(%d*):(%d*):(%d*):(%d*):%d*:%d*:%d*"
 	local replacement = "|Hitem:%1:%2:%3:%4:%5:%6:%7:::" -- Compare link with uniqueId, linkLevel and SpecID removed
 	return item1:gsub(pattern, replacement) == item2:gsub(pattern, replacement)
-end
-function rc:DebugLog (...)
-   return debug and print("DebugLog:", ...)
-end
-function rc:Debug(...)
-   return debug and print("Debug:", ...)
 end
 function rc:GetContainerItemTradeTimeRemaining (c,s)
    return c * s * 1000
@@ -54,7 +45,7 @@ dofile "../../Classes/ItemStorage.lua" -- Load the rc.ItemStorage namespace
 TestBasicFunctions = {
    Setup = function()
       dofile "../../Classes/ItemStorage.lua"
-      db.itemStorage = {
+      rc.db.itemStorage = {
       {
          link = "|cffa335ee|Hitem:160623::::::::120:577::5:3:4823:1492:4786:::|h[Hood of Pestilent Ichor]|h|r", -- private.items[1]
          type = "to_trade",
@@ -132,7 +123,7 @@ TestBasicFunctions = {
 TestPersistantStorage = {
    Setup = function()
       dofile "../../Classes/ItemStorage.lua"
-      db.itemStorage = {
+      rc.db.itemStorage = {
       {
          link = "|cffa335ee|Hitem:160623::::::::120:577::5:3:4823:1492:4786:::|h[Hood of Pestilent Ichor]|h|r", -- private.items[1]
          type = "to_trade",
@@ -154,14 +145,14 @@ TestPersistantStorage = {
    TestRemoveItemWithString = function ()
       rc:InitItemStorage()
       rc.ItemStorage:RemoveItem(private.items[1])
-      lu.assertNil(db.itemStorage[1])
+      lu.assertNil(rc.db.itemStorage[1])
       lu.assertEquals(rc.ItemStorage:GetAllItems(), {})
    end,
    TestRemoveItemWithItem = function ()
       rc:InitItemStorage()
       local Item = rc.ItemStorage:GetItem(private.items[1])
       rc.ItemStorage:RemoveItem(Item)
-      lu.assertNil(db.itemStorage[1])
+      lu.assertNil(rc.db.itemStorage[1])
       lu.assertEquals(rc.ItemStorage:GetAllItems(), {})
    end,
    TestRemoveAllItemsOfType = function()

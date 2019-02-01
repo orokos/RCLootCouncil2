@@ -1,15 +1,8 @@
 local lu = require("luaunit")
 
-dofile "../wow_api.lua"
-dofile "../../Libs/LibStub/LibStub.lua"
-dofile "../../Libs/AceAddon-3.0/AceAddon-3.0.lua"
+if not RCLootCouncil then dofile "../Init.lua" end
 
-
---dofile "../__load_libs.lua"
-
--- dofile "../../core.lua"
-
-local rc = LibStub("AceAddon-3.0"):NewAddon("RCLootCouncil")
+local rc = RCLootCouncil
 dofile "../../Classes/PlayerNames.lua" -- Load the rc.Names namespace
 
 

@@ -1,18 +1,14 @@
 local lu = require("luaunit")
 
-dofile "../wow_api.lua"
-dofile "../../Libs/LibStub/LibStub.lua"
+if not RCLootCouncil then dofile "../Init.lua" end
+
 require "LibDeflate"
-dofile "../../Libs/AceAddon-3.0/AceAddon-3.0.lua"
-dofile "../../Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua"
-dofile "../../Libs/AceComm-3.0/ChatThrottleLib.lua"
-dofile "../../Libs/AceComm-3.0/AceComm-3.0.lua"
-dofile "../../Libs/AceSerializer-3.0/AceSerializer-3.0.lua"
+
 local ser = LibStub("AceSerializer-3.0")
 
 local debug = false
 
-local rc = LibStub("AceAddon-3.0"):NewAddon("RCLootCouncil")
+local rc = RCLootCouncil
 rc.Serialize = ser.Serialize
 rc.Deserialize = ser.Deserialize
 dofile "../../Classes/Comms.lua"
