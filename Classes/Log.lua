@@ -3,11 +3,11 @@
 -- @author Potdisc
 -- Create Date : 30/01/2019 18:56:31
 local addon = LibStub("AceAddon-3.0"):GetAddon("RCLootCouncil")
+local private = {}
 local Log = setmetatable(
    {date_to_debug_log = true},
-   {__call = function(...) private:Log("<MESSAGE>", ...) end}
+   {__call = function(self, ...) private:Log("<INFO>", ...) end}
 )
-local private = {}
 addon.Log = Log
 local debugLog = addon.db.global.log
 local lenght = #debugLog -- Use direct table access for better performance.
@@ -50,11 +50,15 @@ function Log.w (...) private:Log("<WARNING>", ...) end
 -- Print
 function Log.p (...) private:Print(...) end
 
+-- Custom prefix
+function Log.f (prefix, ...) private:Log(prefix, ...) end
+
 function Log.D(...) Log.d(...) end
 function Log.E(...) Log.e(...) end
 function Log.W(...) Log.w(...) end
 function Log.M(...) Log.m(...) end
 function Log.P(...) Log.p(...) end
+function Log.F(...) Log.f(...) end
 
 function private:Log(prefix, ...)
    self:Print(prefix, ...)
@@ -62,7 +66,7 @@ function private:Log(prefix, ...)
 	local time = date("%X", time())
 	msg = "<"..time..">"..prefix..":".. tostring(msg)
 	for i = 1, select("#", ...) do msg = msg.." "..tostring(select(i,...)) end
-	if lenght > self.db.global.logMaxEntries then
+	if lenght > addon.db.global.logMaxEntries then
 		tremove(debugLog, 1) -- We really want to preserve indicies
       lenght = lenght - 1
 	end
