@@ -106,6 +106,10 @@ function GetTime()
 	return _time
 end
 
+function _G.StaticPopup_OnHide(args)
+	-- body...
+end
+
 function IsAddOnLoaded() return nil end
 
 SlashCmdList = {}
@@ -148,6 +152,10 @@ date = os.date
 
 function GetLocale()
 	return "enUS"
+end
+
+function GetCurrentRegion()
+	return 3 -- EU
 end
 
 function GetAddOnInfo()
