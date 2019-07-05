@@ -2544,14 +2544,6 @@ function RCLootCouncil:RegisterUserModule(type, name)
 	userModules[type] = name
 end
 
--- FIXME DEPRECATED in v2.7.6
-function RCLootCouncil:CustomChatCmd(module, funcRef, helpString, ...)
-	for i = 1, select("#", ...) do
-		self.customChatCmd[select(i, ...)] = {module = module, func = funcRef}
-	end
-	tinsert(self.chatCmdHelp, {desc = helpString, module = module})
-end
-
 --- Enables a module to add chat commands to the "/rc" prefix.
 -- @paramsig module, funcRef, cmdDesc, desc, ...
 -- @param module 	The object to call func on.

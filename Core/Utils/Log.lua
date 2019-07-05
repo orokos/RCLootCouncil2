@@ -2,7 +2,7 @@
 -- Creates 'RCLootCouncil.Log' as a namespace for log functions.
 -- @author Potdisc
 -- Create Date : 30/01/2019 18:56:31
-local addon = LibStub("AceAddon-3.0"):GetAddon("RCLootCouncil")
+local _, addon = ...
 local private = {}
 local Log = setmetatable(
    {date_to_debug_log = true},

@@ -1,15 +1,12 @@
 ### v3.0.0
 ---
 
-* **Responses**
-* Removed Relic and Tier token buttons and responses.
-
-
-
 ###### Dev
-* Replaced `:GetResponseText`, `:GetResponseColor` and `:GetResponseSort` with `:GetResponse`.
-* Replaced `:GetButtonText` with `:GetButtons`.
-* Added `:GetNumButtons`.
+* Major restructuring of almost everything of all files. I have attempted to keep a list breaking API changes:
+**Replaced**
+* `:Debug` and `:DebugLog` -> `RCLootCouncil.Log`. See *Log.lua*.
+* Default options moved to separate files, most in Core/Constants.
+* `:ModuleChatCmd` -> `:AddChatCommand`. Argument type and order changed.
 
 
 ### v2.9.3
