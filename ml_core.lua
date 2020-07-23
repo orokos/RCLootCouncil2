@@ -1496,71 +1496,39 @@ function RCLootCouncilML:GetCouncilInGroup()
 	return council
 end
 
--- @param retryCount: How many times we have retried to execute this function.
-function RCLootCouncilML:GetItemsFromMessage(msg, sender, retryCount)
-	local MAX_RETRY = 5
-
-	if not retryCount then retryCount = 0 end
-	addon:Debug("GetItemsFromMessage()", msg, sender, retryCount)
+function RCLootCouncilML:GetItemsFromMessage(msg, sender)
+	addon:Debug("GetItemsFromMessage()", msg, sender)
 	if not addon.isMasterLooter then return end
-
-	local ses, arg1, arg2, arg3 = addon:GetArgs(msg, 4) -- We only require session to be correct and arg1 exists, we can do some error checking on the rest
+  
+	local ses, arg1, remainder = addon:GetArgs(msg, 2)
+	local note = strsub(msg, remainder)
+	if note == '' then note = nil end
 	ses = tonumber(ses)
 	-- Let's test the input
 	if not ses or type(ses) ~= "number" or ses > #self.lootTable then return end -- We need a valid session
-	if not arg1 then return end -- No response or item link
+	if not arg1 then return end -- No response
 
-	-- Set some locals
-	local item1, item2, diff
-	local response = 1
-	if arg1:find("|Hitem:") then -- they didn't give a response
-		item1, item2 = arg1, arg2
-	else
-		-- No reason to continue if they didn't provide an item
-		if not arg2 or not arg2:find("|Hitem:") then return end
-		item1, item2 = arg2, arg3
-
-		local whisperKeys = {}
-		for k, v in pairs(db.buttons.default) do
-			if k ~= "numButtons" then
-				gsub(v.whisperKey, '[%w]+', function(x) tinsert(whisperKeys, {key = x, num = k}) end) -- extract the whisperKeys to a table
-			end
-		end
-
-		for _,v in ipairs(whisperKeys) do
-			if strmatch(arg1, v.key) then -- if we found a match
-				response = v.num
-				break;
-			end
+	local response = 0
+	local whisperKeys = {}
+	for k, v in pairs(db.buttons.default) do
+		if k ~= "numButtons" then
+			gsub(v.whisperKey, '[%w]+', function(x) tinsert(whisperKeys, {key = x, num = k}) end) -- extract the whisperKeys to a table
 		end
 	end
-
-	local ilvl = self.lootTable[ses].ilvl
-	local g1 = item1
-	local g2 = item2
-
-	local itemNeedCaching = false
-	local g1diff, g2diff = g1 and select(4, GetItemInfo(g1)), g2 and select(4, GetItemInfo(g2))
-	if g1diff and g2diff then
-		diff = g1diff >= g2diff and ilvl - g2diff or ilvl - g1diff
-	elseif g1 and g2 then
-		itemNeedCaching = true
-	elseif g1diff then
-		diff = ilvl - g1diff
-	elseif g1 then
-		itemNeedCaching = true
+	for _,v in ipairs(whisperKeys) do
+		if strmatch(arg1, v.key) then -- if we found a match
+			response = v.num
+			break;
+		end
 	end
-
-	if itemNeedCaching and retryCount < MAX_RETRY then -- Limit retryCount to avoid infinite loop. User can send invalid link that can never be cached.
-		return self:ScheduleTimer("GetItemsFromMessage", 1, msg, sender, retryCount + 1)
-	end
-
+	if response == 0 then return end
+  
 	local toSend = {
-		gear1 = item1,
-		gear2 = item2,
+		gear1 = nil,
+		gear2 = nil,
 		ilvl = nil,
-		diff = diff,
-		note = L["Auto extracted from whisper"],
+		diff = nil,
+		note = note,
 		response = response,
 	}
 
