@@ -92,7 +92,7 @@ local playersData = {-- Update on login/encounter starts. it stores the informat
 
 function RCLootCouncil:OnInitialize()
 	--IDEA Consider if we want everything on self, or just whatever modules could need.
-	self.version = GetAddOnMetadata("RCLootCouncil", "Version")
+	self.version = "2.19.2"
 	self.nnp = false
 	self.debug = false
 	self.tVersion = nil -- String or nil. Indicates test version, which alters stuff like version check. Is appended to 'version', i.e. "version-tVersion" (max 10 letters for stupid security)
