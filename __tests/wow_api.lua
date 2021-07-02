@@ -6,7 +6,7 @@ local donothing = function() end
 local frames = {} -- Stores globally created frames, and their internal properties.
 
 local FrameClass = {} -- A class for creating frames.
-FrameClass.methods = { "SetScript", "GetScript", "RegisterEvent", "UnregisterEvent", "UnregisterAllEvents", "Show", "Hide", "IsShown", "ClearAllPoints", "SetParent","SetPoint","SetFrameStrata","SetAllPoints", "SetBackdrop","EnableMouse","SetBackdropColor", "SetBackdropBorderColor", "CreateFontString", "SetWidth","SetHeight", "GetParent", "SetFrameLevel", "GetFrameLevel", "SetNormalTexture", "CreateTexture", "SetFontString","SetNormalFontObject","SetHighlightFontObject","SetDisabledFontObject", "SetID", "SetToplevel" }
+FrameClass.methods = { "SetScript", "GetScript", "RegisterEvent", "UnregisterEvent", "UnregisterAllEvents", "Show", "Hide", "IsShown", "ClearAllPoints", "SetParent","SetPoint","SetFrameStrata","SetAllPoints", "SetBackdrop","EnableMouse","SetBackdropColor", "SetBackdropBorderColor", "CreateFontString", "SetWidth","SetHeight","SetSize", "GetParent", "SetFrameLevel", "GetFrameLevel", "SetNormalTexture","GetNormalTexture","SetPushedTexture","GetPushedTexture","SetHighlightTexture","GetHighlightTexture", "CreateTexture", "SetFontString","SetNormalFontObject","SetHighlightFontObject","SetDisabledFontObject", "SetID","SetText", "SetToplevel" }
 function FrameClass:New()
    local frame = {}
    for i, method in ipairs(self.methods) do
@@ -80,8 +80,27 @@ end
 function FrameClass:SetHeight (...)
    -- body...
 end
+function FrameClass:SetSize (h,w)
+   self:SetHeight(h)
+   self:SetWidth(w)
+end
 function FrameClass:SetNormalTexture (...)
-   -- body...
+
+end
+function FrameClass:GetNormalTexture (...)
+   return self:CreateTexture()
+end
+function FrameClass:SetPushedTexture (...)
+
+end
+function FrameClass:GetPushedTexture (...)
+   return self:CreateTexture()
+end
+function FrameClass:SetHighlightTexture (...)
+
+end
+function FrameClass:GetHighlightTexture (...)
+   return self:CreateTexture()
 end
 function FrameClass:SetFontString (...)
    -- body...
@@ -90,6 +109,7 @@ function FrameClass:SetNormalFontObject (...)end
 function FrameClass:SetHighlightFontObject (...)end
 function FrameClass:SetDisabledFontObject (...)end
 function FrameClass:SetID (...)end
+function FrameClass:SetText (...)end
 function FrameClass:SetToplevel (...)end
 function FrameClass:GetParent (...)
    return frames[self].parent
@@ -100,6 +120,8 @@ end
 function FrameClass:GetFrameLevel (...)
    return frames[self].values.FrameLevel or 0
 end
+
+
 
 function FrameClass:CreateFontString () -- Very much a mock
    return {
@@ -114,7 +136,10 @@ function FrameClass:CreateFontString () -- Very much a mock
       end,
       SetText = function (args)
          -- body...
-      end
+      end,
+      SetSize = function()
+
+      end,
    }
 end
 
@@ -359,12 +384,16 @@ function setglobal(k, v)
    _G[k] = v
 end
 
-local function _errorhandler(msg)
-   print("--------- geterrorhandler error -------\n"..msg.."\n-----end error-----\n")
+function _errorhandler(msg)
+   error(msg,2)--print("--------- geterrorhandler error -------\n"..msg.."\n-----end error-----\n")
 end
 
 function geterrorhandler()
    return _errorhandler
+end
+
+function seterrorhandler()
+
 end
 
 function InCombatLockdown()
@@ -514,81 +543,6 @@ function dump(...)
    return "<"..table.concat(t, "> <")..">"
 end
 
-function tDeleteItem(tbl, item)
-   local index = 1;
-   while tbl[index] do
-      if ( item == tbl[index] ) then
-         tremove(tbl, index);
-      else
-         index = index + 1;
-      end
-   end
-end
-
-function tIndexOf(tbl, item)
-   for i, v in ipairs(tbl) do
-      if item == v then
-         return i;
-      end
-   end
-end
-
-function tContains(tbl, item)
-   return tIndexOf(tbl, item) ~= nil;
-end
-
-function tInvert(tbl)
-   local inverted = {};
-   for k, v in pairs(tbl) do
-      inverted[v] = k;
-   end
-   return inverted;
-end
-
-function tFilter(tbl, pred, isIndexTable)
-   local out = {};
-
-   if (isIndexTable) then
-      local currentIndex = 1;
-      for i, v in ipairs(tbl) do
-         if (pred(v)) then
-            out[currentIndex] = v;
-            currentIndex = currentIndex + 1;
-         end
-      end
-   else
-      for k, v in pairs(tbl) do
-         if (pred(v)) then
-            out[k] = v;
-         end
-      end
-   end
-
-   return out;
-end
-
-function CopyTable(settings)
-   local copy = {};
-   for k, v in pairs(settings) do
-      if ( type(v) == "table" ) then
-         copy[k] = CopyTable(v);
-      else
-         copy[k] = v;
-      end
-   end
-   return copy;
-end
-
-function FindInTableIf(tbl, pred)
-   for k, v in pairs(tbl) do
-      if (pred(v)) then
-         return k, v;
-      end
-   end
-
-   return nil;
-end
-
 function Ambiguate(name, method)
    if method == "short" then
       name = gsub(name, "%-.+", "")
@@ -611,8 +565,43 @@ function split(inputstr, sep)
 
 end
 
+local playerNameToGUID = {
+   Player1 = {
+      guid = "Player-1-00000001",
+      name = "Player1-Realm1",
+      realm = "Realm1",
+      class = "WARRIOR"
+   },
+   Player2 = {
+      guid = "Player-1-00000002",
+      name = "Player2-Realm1",
+      realm = "Realm1",
+      class = "WARRIOR"
+   },
+   Player3 = {
+      guid = "Player-1122-00000003",
+      name = "Player3-Realm2",
+      realm = "Realm2",
+      class = "WARRIOR"
+   },
+}
+
+local playerGUIDInfo = {}
+for _, info in pairs(playerNameToGUID) do
+   playerGUIDInfo[info.guid] = info
+end
+
 function UnitGUID (name)
-   return "Player-FFF-ABCDF012"
+   return playerNameToGUID[name] and playerNameToGUID[name].guid or "Player-FFF-ABCDF012"
+end
+
+function GetPlayerInfoByGUID (guid)
+   local player = playerGUIDInfo[guid]
+   if player then
+      return nil,player.class, nil,nil,nil, Ambiguate(player.name, "short"), player.realm
+   else
+      return nil, "HUNTER", nil,nil,nil, "Unknown", "Unknown"
+   end
 end
 
 -- Enable some globals
@@ -1153,3 +1142,7 @@ TANK = "Tank"
 HEALER = "Healer"
 MELEE = "Melee"
 RANGED = "Ranged"
+
+dofile "__tests/wow_api/Mixin.lua"
+dofile "__tests/wow_api/Color.lua"
+dofile "__tests/wow_api/TableUtil.lua"

@@ -1,9 +1,11 @@
 --- options.lua - option frame in BlizzardOptions for RCLootCouncil
 -- @author Potdisc
 -- Create Date : 5/24/2012 6:24:55 PM
-
+---@type RCLootCouncil
 local _,addon = ...
 local L = LibStub("AceLocale-3.0"):GetLocale("RCLootCouncil")
+---@type Data.Player
+local Player = addon.Require "Data.Player"
 ------ Options ------
 local function DBGet(info)
 	return addon.db.profile[info[#info]]
@@ -41,6 +43,8 @@ local function createNewButtonSet(path, name, order)
 					addon.db.profile.enabledButtons[info[#info - 1]] = nil
 					addon.db.profile.responses[info[#info - 1]] = nil
 					addon.db.profile.buttons[info[#info - 1]] = nil
+
+					addon:ConfigTableChanged("responses")
 				end,
 			},
 			numButtons = {
@@ -53,7 +57,10 @@ local function createNewButtonSet(path, name, order)
 				max = addon.db.profile.maxButtons,
 				step = 1,
 				get = function() return addon.db.profile.buttons[name].numButtons or 3 end,
-				set = function(_,v) addon.db.profile.buttons[name].numButtons = v end,
+				set = function(_,v) 
+					addon.db.profile.buttons[name].numButtons = v
+					addon:ConfigTableChanged("responses")
+				end,
 			},
 		}
 	}
@@ -111,6 +118,8 @@ local function createNewButtonSet(path, name, order)
 				-- Now update the sort values
 				addon.db.profile.responses[name][i].sort = i
 				addon.db.profile.responses[name][i - 1].sort = i - 1
+
+				addon:ConfigTableChanged("responses")
 			end,
 		}
 		path[name].args["move_down"..i] = {
@@ -129,8 +138,88 @@ local function createNewButtonSet(path, name, order)
 				addon.db.profile.responses[name][i + 1] = tempResponse
 				addon.db.profile.responses[name][i].sort = i
 				addon.db.profile.responses[name][i + 1].sort = i + 1
+
+				addon:ConfigTableChanged("responses")
 			end,
 		}
+	end
+end
+
+
+local function createAutoAwardPrioList(list)
+	local ret = {}
+	local num = 4
+	for i, name in ipairs(list) do
+		local player, class, color
+		player = Player:Get(name)
+		class = player.name ~= "Unknown" and player:GetClass()
+		ret.desc = {
+			order = 0,
+			type = "description",
+			name = L["opt_autoAwardPrioList_desc"],
+		}
+		ret["name"..i] = {
+			order = (i - 1) * num + 1,
+			type = "description",
+			width = 2.3,
+			fontSize = "medium",
+			name = function()
+				color = _G.RAID_CLASS_COLORS[class or "PRIEST"] -- fallback to PRIEST as it's white
+				return  i..". "..color:WrapTextInColorCode(addon.Ambiguate(name))
+			end,
+			image = function() return class and "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES" or "Interface/ICONS/INV_Sigil_Thorim.png" end,
+			imageCoords = class and CLASS_ICON_TCOORDS[class] or {},
+			imageWidth = 20,
+			imageHeight = 20,
+		}
+		ret["remove"..i] = {
+			order = (i - 1) * num + 2,
+			name = _G.REMOVE,
+			width = 0.5,
+			type = "execute",
+			func = function()
+				table.remove(list, i)
+			end
+		}
+		ret["moveUp"..i] = {
+			order = (i - 1) * num + 3,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up",
+			disabled = function() return i == 1 end,
+			func = function()
+				local tmp = list[i]
+				list[i] = list[i - 1]
+				list[i - 1] = tmp
+			end,
+		}
+		ret["moveDown"..i] = {
+			order = (i - 1) * num + 4,
+			name = "",
+			type = "execute",
+			width = 0.1,
+			image = "Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up",
+			disabled = function() return i == #list end,
+			func = function()
+				local tmp = list[i]
+				list[i] = list[i + 1]
+				list[i + 1] = tmp
+			end,
+		}
+	end
+	return ret
+end
+
+--- Creates a function used as the `set` value in auto award candidate input fields.
+--- Takes input text (split by commas and spaces) and adds them to the provided list.
+local function autoAwardFieldProcessor(list)
+	return function(_, v)
+		for name in string.gmatch(v, "[^, ]+") do
+			if not tContains(list, name) then
+				tinsert(list, name)
+			end
+		end
 	end
 end
 
@@ -195,24 +284,6 @@ function addon:OptionsTable()
 										end,
 										get = function() return addon.enabled end,
 									},
-									autoOpen = {
-										order = 2,
-										name = L["Auto Open"],
-										desc = L["auto_open_desc"],
-										type = "toggle",
-									},
-									autoClose = {
-										order = 3,
-										name = L["Auto Close"],
-										desc = L["auto_close_desc"],
-										type = "toggle",
-									},
-									minimizeInCombat = {
-										order = 4,
-										name = L["Minimize in combat"],
-										desc = L["Check to have all frames minimize when entering combat"],
-										type = "toggle",
-									},
 									ambiguate = {
 										order = 5,
 										name = L["Append realm names"],
@@ -254,7 +325,7 @@ function addon:OptionsTable()
 										func = function()
 											InterfaceOptionsFrame:Hide()
 											LibStub("AceConfigDialog-3.0"):CloseAll()
-											self.Sync:Spawn()
+											self.Sync:Enable()
 										end,
 									},
 								},
@@ -303,21 +374,39 @@ function addon:OptionsTable()
 								name = L["Frame options"],
 								inline = true,
 								args = {
-									autoTrade = {
+									autoOpen = {
 										order = 1,
+										name = L["Auto Open"],
+										desc = L["auto_open_desc"],
+										type = "toggle",
+									},
+									autoClose = {
+										order = 2,
+										name = L["Auto Close"],
+										desc = L["auto_close_desc"],
+										type = "toggle",
+									},
+									minimizeInCombat = {
+										order = 3,
+										name = L["Minimize in combat"],
+										desc = L["Check to have all frames minimize when entering combat"],
+										type = "toggle",
+									},
+									autoTrade = {
+										order = 4,
 										name = L["Auto Trade"],
 										desc = L["opt_autoTrade_desc"],
 										type = "toggle",
 									},
 									showSpecIcon = {
-										order = 2,
+										order = 5,
 										name = L["Show Spec Icon"],
 										desc = L["show_spec_icon_desc"],
 										type = "toggle",
 									},
 									chatFrameName = {
-										order = 3,
-										name = _G.CHAT,
+										order = 6,
+										name = L["opt_chatFrameName_name"],
 										desc = L["opt_chatFrameName_desc"],
 										type = "select",
 										values = function ()
@@ -382,7 +471,7 @@ function addon:OptionsTable()
 										name = L["Clear Loot History"],
 										desc = L["clear_loot_history_desc"],
 										type = "execute",
-										func = function() self.lootDB:ResetDB(); self:UpdateHistoryDB() end,
+										func = function() self.lootDB:ResetDB() end,
 										confirm = true,
 									},
 									spacer = {
@@ -405,7 +494,7 @@ function addon:OptionsTable()
 											local nameData = self:GetActiveModule("history"):GetAllRegisteredCandidates()
 											local t = {}
 											for name, v in pairs(nameData) do
-												t[name] = "|cff"..self:RGBToHex(v.color.r,v.color.g,v.color.b)..v.name
+												t[name] = "|cff"..self.Utils:RGBToHex(v.color.r,v.color.g,v.color.b)..v.name
 											end
 											return t
 										end,
@@ -480,12 +569,15 @@ function addon:OptionsTable()
 										type = "select",
 										width = "double",
 										values = {
+											[1607385600] = "Castle Nathria Release",
+											[1606176000] = "Shadowlands Launch",
+											[1602547200] = "Patch 9.0.1 (Shadowlands)",
 											[1579593600] = "Ny'alotha the Waking City raid",
 											[1578988800] = "Patch 8.3.0 (Visions of N'Zoth)",
-											[1562644800] = "Azshara's Eternal Palace raid",
-											[1561521600] = "Patch 8.2.0 (Rise of Azshara)",
-											[1544515200] = "Patch 8.1.0",
-											[1534154400] = "Patch 8.0.1 (Battle for Azeroth)",
+											-- [1562644800] = "Azshara's Eternal Palace raid",
+											-- [1561521600] = "Patch 8.2.0 (Rise of Azshara)",
+											-- [1544515200] = "Patch 8.1.0",
+											-- [1534154400] = "Patch 8.0.1 (Battle for Azeroth)",
 											-- [1510225200] = "Patch 7.3.2 (Tier 21)",
 											-- [1497348000] = "Patch 7.2.5 (Tier 20)",
 											-- [1484650800] = "Patch 7.1.5 (Tier 19)",
@@ -832,18 +924,12 @@ function addon:OptionsTable()
 								args = {
 									autoStart = {
 										order = 1,
-										name = L["Auto Start"],
-										desc = L["auto_start_desc"],
-										type = "toggle",
-									},
-									altClickLooting = {
-										order = 2,
-										name = L["Alt click Looting"],
-										desc = L["alt_click_looting_desc"],
+										name = L["opt_skipSessionFrame_name"],
+										desc = L["opt_skipSessionFrame_desc"],
 										type = "toggle",
 									},
 									sortItems = {
-										order = 3,
+										order = 2,
 										name = L["Sort Items"],
 										desc = L["sort_items_desc"],
 										type = "toggle",
@@ -855,54 +941,47 @@ function addon:OptionsTable()
 									},
 									autoLoot = {
 										order = 5,
-										name = _G.AUTO_LOOT_DEFAULT_TEXT,
-										desc = L["auto_loot_desc"],
+										name = L["opt_autoAddItems_name"],
+										desc = L["opt_autoAddItems_desc"],
 										type = "toggle",
-									},
-									autolootEverything = {
-										order = 6,
-										name = L["Loot Everything"],
-										desc = L["loot_everything_desc"],
-										type = "toggle",
-										disabled = function() return not self.db.profile.autoLoot end,
 									},
 									autolootBoE = {
-										order = 7,
-										name = L["Autoloot BoE"],
-										desc = L["autoloot_BoE_desc"],
+										order = 6,
+										name = L["opt_autoAddBoEs_name"],
+										desc = L["opt_autoAddBoEs_desc"],
 										type = "toggle",
 										disabled = function() return not self.db.profile.autoLoot end,
 									},
-									autolootOthersBoE = {
-										order = 8,
-										name = L["Autoloot all BoE"],
-										desc = L["autoloot_others_BoE_desc"],
+									lootPets = {
+										order = 6.5,
+										name = L["opt_autoAddPets_name"],
+										desc = L["opt_autoAddPets_desc"],
 										type = "toggle",
+										get = function()
+											return not addon.blacklistedItemClasses[LE_ITEM_CLASS_MISCELLANEOUS][LE_ITEM_MISCELLANEOUS_COMPANION_PET]
+										end,
+										set = function(_, val)
+											addon.blacklistedItemClasses[LE_ITEM_CLASS_MISCELLANEOUS][LE_ITEM_MISCELLANEOUS_COMPANION_PET] = not val
+										end
 									},
 									printCompletedTrades = {
-										order = 9,
+										order = 7,
 										name = L["opt_printCompletedTrade_Name"],
 										desc = L["opt_printCompletedTrade_Desc"],
 										type = "toggle",
 									},
 									rejectTrade = {
-										order = 10,
+										order = 8,
 										name = L["opt_rejectTrade_Name"],
 										desc = L["opt_rejectTrade_Desc"],
 										type = "toggle",
 									},
 									awardLater = {
-										order = 11,
+										order = 9,
 										name = L["Award later"],
 										desc = L["opt_award_later_desc"],
 										type = "toggle"
 									},
-									saveBonusRolls = {
-										order = 12,
-										name = L["opt_saveBonusRolls_Name"],
-										desc = L["opt_saveBonusRolls_Desc"],
-										type = "toggle"
-									}
 								},
 							},
 							voteOptions = {
@@ -921,12 +1000,6 @@ function addon:OptionsTable()
 										order = 2,
 										name = L["Multi Vote"],
 										desc = L["multi_vote_desc"],
-										type = "toggle",
-									},
-									allowNotes = {
-										order = 3,
-										name = L["Notes"],
-										desc = L["notes_desc"],
 										type = "toggle",
 									},
 									anonymousVoting = {
@@ -965,7 +1038,6 @@ function addon:OptionsTable()
 										name = L["Require Notes"],
 										desc = L["options_requireNotes_desc"],
 										type = "toggle",
-										disabled = function() return not self.db.profile.allowNotes end ,
 									},
 								},
 							},
@@ -1082,17 +1154,17 @@ function addon:OptionsTable()
 									},
 									autoAwardTo2 = {
 										order = 2,
-										name = L["Auto Award to"],
+										name = L["add_candidate"],
 										desc = L["auto_award_to_desc"],
 										width = "double",
 										type = "input",
 										hidden = function() return GetNumGroupMembers() > 0 end,
-										get = function() return self.db.profile.autoAwardTo; end,
-										set = function(i,v) self.db.profile.autoAwardTo = v; end,
+										get = function() return "" end,
+										set = autoAwardFieldProcessor(db.autoAwardTo),
 									},
 									autoAwardTo = {
 										order = 2,
-										name = L["Auto Award to"],
+										name = L["add_candidate"],
 										desc = L["auto_award_to_desc"],
 										width = "double",
 										type = "select",
@@ -1104,6 +1176,12 @@ function addon:OptionsTable()
 												t[name] = name
 											end
 											return t;
+										end,
+										get = function() return "" end,
+										set = function(_, val)
+											if not tContains(db.autoAwardTo, val) then
+												tinsert(db.autoAwardTo, val)
+											end
 										end,
 										hidden = function() return GetNumGroupMembers() == 0 end,
 									},
@@ -1120,6 +1198,15 @@ function addon:OptionsTable()
 											end
 											return t
 										end,
+									},
+
+									autoAwardMembers = {
+										order = 10,
+										name = L["Auto Award to"],
+										type = "group",
+										inline = true,
+										hidden = function() return not db.autoAward end,
+										args = createAutoAwardPrioList(db.autoAwardTo)
 									},
 								},
 							},
@@ -1140,17 +1227,17 @@ function addon:OptionsTable()
 									},
 									autoAwardBoETo2 = {
 										order = 2,
-										name = L["Auto Award to"],
+										name = L["add_candidate"],
 										desc = L["auto_award_to_desc"],
 										width = "double",
 										type = "input",
 										hidden = function() return GetNumGroupMembers() > 0 end,
-										get = function() return self.db.profile.autoAwardBoETo; end,
-										set = function(i,v) self.db.profile.autoAwardBoETo = v; end,
+										get = function() return "" end,
+										set = autoAwardFieldProcessor(db.autoAwardBoETo),
 									},
 									autoAwardBoETo = {
 										order = 2,
-										name = L["Auto Award to"],
+										name = L["add_candidate"],
 										desc = L["auto_award_to_desc"],
 										width = "double",
 										type = "select",
@@ -1162,6 +1249,12 @@ function addon:OptionsTable()
 												t[name] = name
 											end
 											return t;
+										end,
+										get = function() return "" end,
+										set = function(_,val)
+											if not tContains(db.autoAwardBoETo, val) then
+												tinsert(db.autoAwardBoETo, val)
+											end
 										end,
 										hidden = function() return GetNumGroupMembers() == 0 end,
 									},
@@ -1178,6 +1271,14 @@ function addon:OptionsTable()
 											end
 											return t
 										end,
+									},
+									autoAwardBoEMembers = {
+										order = 10,
+										name = L["Auto Award to"],
+										type = "group",
+										inline = true,
+										hidden = function() return not db.autoAwardBoE end,
+										args = createAutoAwardPrioList(db.autoAwardBoETo)
 									},
 								}
 							},
@@ -1522,7 +1623,7 @@ function addon:OptionsTable()
 										name = "",
 										values = function()
 											local t = {}
-											for _,v in ipairs(self.db.profile.council) do t[v] = self.Ambiguate(v) end
+											for _,v in ipairs(self.db.profile.council) do t[v] = addon.Ambiguate(Player:Get(v):GetName()) end
 											table.sort(t)
 											return t;
 										end,
@@ -1566,7 +1667,7 @@ function addon:OptionsTable()
 												type = "select",
 												width = "full",
 												values = function()
-													GuildRoster();
+													addon.Utils:GuildRoster();
 													local info = {};
 													for ci = 1, GuildControlGetNumRanks() do
 														info[ci] = " "..ci.." - "..GuildControlGetRankName(ci);
@@ -1576,9 +1677,9 @@ function addon:OptionsTable()
 												set = function(_, val)
 													self.db.profile.minRank = val
 													for i = 1, GetNumGuildMembers() do
-														local name, _, rankIndex = GetGuildRosterInfo(i) -- get info from all guild members
+														local _, _, rankIndex,_, _, _, _, _, _, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(i)
 														if rankIndex + 1 <= val then -- if the member is the required rank, or above
-															tinsert(self.db.profile.council, name) -- then insert them to the council
+															tinsert(self.db.profile.council, guid) -- then insert them to the council
 														end
 													end
 													addon:CouncilChanged()
@@ -1626,29 +1727,24 @@ function addon:OptionsTable()
 											local t = {}
 											for i = 1, GetNumGroupMembers() do
 												local name = select(1,GetRaidRosterInfo(i))
-												t[self:UnitName(name)] = self.Ambiguate(name)
+												local guid = UnitGUID(name)
+												t[guid] = self.Ambiguate(name)
 											end
-											if #t == 0 then t[self.playerName] = self.Ambiguate(self.playerName) end -- Insert ourself
+											if #t == 0 then t[self.player:GetGUID()] = self.player:GetShortName() end -- Insert ourself
 											table.sort(t, function(v1, v2)
 												return v1 and v1 < v2
 											end)
 											return t
 										end,
 										set = function(info,key,tag)
-											--local values = self.options.args.mlSettings.args.councilTab.args.addGroupCouncil.args.list.values()
 											if tag then -- add
 												tinsert(self.db.profile.council, key)
 											else -- remove
-												for k,v in ipairs(self.db.profile.council) do
-													if v == key then
-														tremove(self.db.profile.council, k)
-													end
-												end
+												tDeleteItem(self.db.profile.council, key)
 											end
 											addon:CouncilChanged()
 										end,
 										get = function(info, key)
-											--local values = self.options.args.mlSettings.args.councilTab.args.addGroupCouncil.args.list.values()
 											return tContains(self.db.profile.council, key)
 										end,
 									},
@@ -1715,6 +1811,10 @@ function addon:OptionsTable()
 				-- And move the temp up
 				self.db.profile.buttons.default[i - 1] = tempBtn
 				self.db.profile.responses.default[i - 1] = tempResponse
+
+				self.db.profile.responses.default[i].sort = i
+				self.db.profile.responses.default[i - 1].sort = i - 1
+				addon:ConfigTableChanged("responses")
 			end,
 		}
 		options.args.mlSettings.args.buttonsTab.args.buttonOptions.args["move_down"..i] = {
@@ -1731,6 +1831,11 @@ function addon:OptionsTable()
 				self.db.profile.responses.default[i] = self.db.profile.responses.default[i + 1]
 				self.db.profile.buttons.default[i + 1] = tempBtn
 				self.db.profile.responses.default[i + 1] = tempResponse
+
+				self.db.profile.responses.default[i].sort = i
+				self.db.profile.responses.default[i + 1].sort = i + 1
+
+				addon:ConfigTableChanged("responses")
 			end,
 		}
 
@@ -1894,8 +1999,8 @@ function addon:GetGuildOptions()
 					values = function()
 						wipe(names)
 						for ci = 1, GetNumGuildMembers() do
-							local name, _, rankIndex = GetGuildRosterInfo(ci); -- NOTE I assume the realm part of name is without spaces.
-							if (rankIndex + 1) == i then names[name] = Ambiguate(name, "short") end -- Ambiguate to show realmname for players from another realm
+							local name, _, rankIndex,_, _, _, _, _, _, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(ci); -- NOTE I assume the realm part of name is without spaces.
+							if (rankIndex + 1) == i then names[guid] = addon.Ambiguate(name) end -- Ambiguate to show realmname for players from another realm
 						end
 						table.sort(names, function(v1, v2)
 							return v1 and v1 < v2
@@ -1909,11 +2014,7 @@ function addon:GetGuildOptions()
 						if tag then
 							tinsert(self.db.profile.council, key)
 						else
-							for k,v in ipairs(self.db.profile.council) do
-								if v == key then
-									tremove(self.db.profile.council, k)
-								end
-							end
+							tDeleteItem(self.db.profile.council, key)
 						end
 						addon:CouncilChanged()
 					end,

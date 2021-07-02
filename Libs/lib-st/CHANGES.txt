@@ -1,41 +1,28 @@
-lightweight tag 1f908c0a58bf78e44f348fc1e33597943b693121 v4.0.3
-Author:	Dan Dumont <ddumont@gmail.com>
-Date:	Tue Nov 6 17:39:13 2018 -0500
+lightweight tag 78691a1f7e7a78c7ce173b5cf87f840ad3800d07 v4.1.3
+Author:	GitHub <noreply@github.com>
+Date:	Mon Apr 26 13:16:27 2021 -0400
 
-commit 1f908c0a58bf78e44f348fc1e33597943b693121
-Author: Dan Dumont <ddumont@gmail.com>
-Date:   Tue Nov 6 17:39:13 2018 -0500
+commit d20a50bc039a3fbc2ef060d5d66f9e0401211e2b
+Author: lantisnt <lantisnt@gmail.com>
+Date:   Thu Apr 22 19:26:58 2021 +0200
 
-    update versioning
+    Align GetSelection to new changes
 
-commit e879fb7ea838362853b8139bc748cc505b4fd242
-Author: VideoPlayerCode <38923130+VideoPlayerCode@users.noreply.github.com>
-Date:   Wed Oct 31 18:53:23 2018 +0100
+commit d20a50bc039a3fbc2ef060d5d66f9e0401211e2b
+Author: lantisnt <lantisnt@gmail.com>
+Date:   Thu Apr 22 19:26:58 2021 +0200
 
-    Rewrite sort to use constants, fixed asc-desc bug
-    
-    - Renamed main library table to "lib", to follow LibStub conventions.
-    
-    - Added flag constants (.SORT_ASC and .SORT_DSC) as replacements for the
-      old "asc" and "dsc" string system. Numbers are much faster to compare
-      than string equality, which speeds up the sorting algorithm even more.
-      And having flags removes the risk of unintentional string typos by users.
-    
-      Usage: ["defaultsort"] = st.SORT_ASC,
-    
-    - Moving to a new flag-system allows us to fix old bugs! Fixed the
-      long-standing library bug where "asc" was actually descending order,
-      and "dsc" was actually ascending order. The new .SORT_ASC flag is
-      now *real* ascending order, and .SORT_DSC is descending.
-    
-    - Full backwards compatibility. If the user provides a "cols" table with
-      old "asc" or "dsc" strings, those will automatically be converted to
-      the new flags, with full preservation of the expected sorting behaviors
-      of those old strings: "asc" => .SORT_DSC, "dsc" => .SORT_ASC.
-    
-    - The default sort order for columns where no order has been provided by
-      the user is, unfortunately, .SORT_DSC, (ie. "d", "c", "b", "a" order),
-      since that's how the older versions of the library defaulted. If a new
-      major library version is released in the future, the default order should
-      be changed to .SORT_ASC since that's more intuitive.
+    Align GetSelection to new changes
+
+commit e6f3421cb72019e18632f607fd1df98a9bc8073f
+Author: lantisnt <lantisnt@gmail.com>
+Date:   Thu Apr 22 19:12:18 2021 +0200
+
+    add clearing for multiselecte
+
+commit 870bcce21775817fcdeb64f16ff614eef51a6c89
+Author: lantisnt <lantisnt@gmail.com>
+Date:   Thu Apr 22 18:57:36 2021 +0200
+
+    Add multiselection
 
