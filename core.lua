@@ -112,7 +112,7 @@ local playersData = {-- Update on login/encounter starts. it stores the informat
 function RCLootCouncil:OnInitialize()
 	self.Log = self.Require "Utils.Log":New()
 	--IDEA Consider if we want everything on self, or just whatever modules could need.
-	self.version = "2.19.2"
+	self.version = "3.2.0"
 	self.nnp = false
 	self.debug = false
 	self.tVersion = nil -- String or nil. Indicates test version, which alters stuff like version check. Is appended to 'version', i.e. "version-tVersion" (max 10 letters for stupid security)
@@ -137,7 +137,7 @@ function RCLootCouncil:OnInitialize()
 
 	self.lootStatus = {}
 	self.EJLastestInstanceID = RCLootCouncil:GetEJLatestInstanceID()
-	
+
 	---@type table<string,boolean>
 	self.candidatesInGroup = {}
 	self.mldb = {} -- db recived from ML
@@ -2060,7 +2060,7 @@ function RCLootCouncil:GetClassColor(class)
 	end
 end
 
--- REVIEW: Blizzard has functions for this in ColorUtil.lua 
+-- REVIEW: Blizzard has functions for this in ColorUtil.lua
 function RCLootCouncil:GetUnitClassColoredName(name)
 	local player = Player:Get(name)
 	if player then
@@ -2670,22 +2670,22 @@ function RCLootCouncil:OnCovenantRequest(sender)
 		data = C_Covenants.GetActiveCovenantID()
 	}
 end
-		
+
 function RCLootCouncil:GetEJLatestInstanceID()
 	local serverExpansionLevel = GetServerExpansionLevel()
    	EJ_SelectTier(serverExpansionLevel+1)
    	local index = 1
    	local instanceId, name = EJ_GetInstanceByIndex(index, true)
-   
+
    	while index do
       		local id = EJ_GetInstanceByIndex(index+1, true)
-      		if id then 
-         		instanceId = id 
+      		if id then
+         		instanceId = id
          		index = index+1
      		end
       		index = nil
    	end
-   
+
    	if not instanceId then instanceId = 1190 end --default to Castle Nathria if no ID is found
    	return instanceId
 end
